@@ -1,0 +1,486 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\geometry{margin=1in}
+\setlist[enumerate]{leftmargin=*, itemsep=0.2em}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue,citecolor=black}
+
+\title{Draft Project Report: Open-Source NGFW with Adaptive Detection}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+This project studies how an open-source firewall setup can be extended toward next-generation firewall behavior using data-driven detection and feedback. The implementation uses OPNsense as inline firewall, Suricata for IDS/IPS, and a side analytics node for telemetry processing, anomaly scoring, and reporting.
+
+In simple words, the project tries to close this gap:
+
+\begin{enumerate}
+    \item normal rule/signature based open-source firewalling,
+    \item adaptive behavior-aware detection mostly available in commercial NGFW products.
+\end{enumerate}
+
+The project is in network security domain, and focuses on practical deployment that can actually be reproduced in a humble lab.
+
+\subsection{Scope of Project}
+
+The scope includes architecture, implementation, and evaluation of a sidecar model with these parts:
+
+\begin{enumerate}
+    \item stateful segmentation and policy enforcement with OPNsense,
+    \item IDS/IPS detection through Suricata,
+    \item log collection and visualization,
+    \item anomaly and classification pipeline using Isolation Forest and Random Forest,
+    \item controlled traffic generation for testing using scenario scripts and TRex.
+\end{enumerate}
+
+\subsection{Scope of Project Impact}
+
+\subsubsection{Social Impact}
+\begin{enumerate}
+    \item Gives a usable cybersecurity demo platform for researchers and students.
+    \item Helps understand real monitoring and attack-defense correlation, not just theory.
+    \item Encourages safer network design habits like segmentation and least privilege.
+\end{enumerate}
+
+\subsubsection{Economic Impact}
+\begin{enumerate}
+    \item Uses open-source stack and avoids commercial NGFW licensing.
+    \item Can be replicated by small colleges or labs with limited budgets.
+    \item Skills learned map to SOC and network security industry roles.
+\end{enumerate}
+
+\subsubsection{Environmental Impact}
+\begin{enumerate}
+    \item Reuses existing hardware through virtualization instead of extra appliances.
+    \item Modular design allows only required components to run, reducing unnecessary overhead.
+    \item High-volume experiments still consume power, so workload profiling is required.
+\end{enumerate}
+
+\subsubsection{Academic Impact}
+\begin{enumerate}
+    \item Connects literature to implementation.
+    \item Produces reusable artifacts: configs, scripts, dataset snapshots, and results.
+    \item Sets a base for future work on closed-loop response.
+\end{enumerate}
+
+\section{Problem Statement}
+
+Most open-source firewall deployments are strong in packet filtering and signature matching, but not adaptive by default. They depend on pre-defined rules and known signatures. That makes them weak against behavior-level anomalies, zero-day style events, and dynamic attack patterns.
+
+Main practical issues are:
+
+\begin{enumerate}
+    \item manual dependence for tuning and response,
+    \item delayed reaction to unknown threats,
+    \item disconnected pipeline between detection and enforcement,
+    \item difficulty in producing local environment-specific intelligence.
+\end{enumerate}
+
+So the core project question is:
+
+How to augment an open-source firewall stack with lightweight adaptive detection and telemetry-driven feedback, while keeping it transparent, low-cost, and implementable in an academic setup?
+
+\textit{[Image suggestion: current open-source firewall workflow describing where static rules/signatures stop being enough for adaptive threat handling.]}
+
+\section{Literature Review}
+
+This section summarizes the findings from the survey literature and how they informed this project design.
+
+\subsection{Firewall Evolution Summary}
+
+Literature tracks evolution from packet filters to proxy firewalls, then stateful inspection, UTM, and NGFW. NIST guidance and later NGFW surveys show that each phase added visibility and control depth.
+
+Key timeline used in this report:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ll}
+\toprule
+Year & Milestone \\
+\midrule
+1988 & Morris Worm incident and CERT/CC formation \\
+1989 & Early packet filtering (screend) \\
+1991 & Proxy firewall deployment pattern \\
+1994 & Stateful inspection mainstreamed (FireWall-1 era) \\
+1998 & Snort released \\
+2004 & UTM market category formalized \\
+2009 & NGFW category formalized \\
+2015 & OPNsense fork introduced \\
+2020s & Adaptive detection research grows \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textit{[Image suggestion: firewall evolution flow showing packet filter $\rightarrow$ proxy $\rightarrow$ stateful $\rightarrow$ UTM $\rightarrow$ NGFW $\rightarrow$ adaptive firewall.]}
+
+\subsection{NGFW Capability from Literature}
+
+Neupane et al., Liang and Kim, and Heino et al. emphasize that NGFW value is not only feature count, but integration quality: application context, DPI, threat intelligence, and prevention in one operational path.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lll}
+\toprule
+Component & Typical Layer Coverage & Function \\
+\midrule
+Packet filtering & L3/L4 & ACL based allow/deny \\
+Stateful engine & L4 & Session tracking \\
+DPI & L4-L7 & Payload/protocol inspection \\
+App identification & L7 & Application-aware control \\
+IDS/IPS & L3-L7 & Threat detection and blocking \\
+Threat intelligence & L3-L7 & IoC correlation \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{IDS and Adaptive Detection Literature}
+
+Denning (1987) established anomaly-based IDS concepts. Khraisat et al. and Liao et al. discuss operational challenges like false positives and alert overload. Ahmad et al. and Dini et al. show there is still a gap between research models and production security operations.
+
+\subsection{Isolation Forest Motivation from Surveyed Papers}
+
+Liu et al. introduced Isolation Forest as an unsupervised anomaly method. Tao et al. validated it in network traffic settings, and Al Farizi et al. reported good efficiency across studies. For this project, that is useful because lab data labeling is not always complete.
+
+\subsection{Identified Gap in Open-Source Ecosystem}
+
+From the surveyed papers, the recurring gap is this: open-source firewall stacks are mature in static controls but weak in adaptive behavior-level learning and automatic policy feedback.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lllll}
+\toprule
+System Class & Detection Style & Inline Prevention & Adaptability & Open-Source Availability \\
+\midrule
+Stateless firewall & Rule only & Yes & Low & High \\
+Stateful firewall & Rule + state & Yes & Low & High \\
+IDS & Signature/anomaly alerting & No & Low & High \\
+IPS & Signature/anomaly & Yes & Low & High \\
+UTM & Multi-engine & Yes & Moderate & Partial \\
+NGFW & Context + signature & Yes & Moderate & Limited \\
+Adaptive sidecar firewall & Learned behavior + signatures & Yes & High & Underexplored \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Project Description}
+
+The project implements a sidecar-based adaptive firewall architecture.
+
+\subsection{System Overview}
+
+\begin{enumerate}
+    \item OPNsense is the inline enforcement point.
+    \item Suricata performs signature-driven IDS/IPS detection.
+    \item Firewall and IDS events are exported using syslog.
+    \item Analytics node processes logs into features.
+    \item Isolation Forest gives anomaly score trends.
+    \item Random Forest classifies known scenario classes.
+    \item Dashboard combines control-plane and data-plane visibility.
+\end{enumerate}
+
+\textit{[Image suggestion: sidecar architecture showing enforcement on firewall and analytics/inference on separate node.]}
+
+\subsection{Main Use Cases}
+
+\begin{enumerate}
+    \item Student cyber range and practical coursework.
+    \item Security monitoring training and triage exercises.
+    \item Comparative study: signature-only vs adaptive assisted detection.
+    \item Controlled segmentation validation under mixed traffic.
+\end{enumerate}
+
+\textit{[Table suggestion: use-case mapping describing stakeholder, objective, expected security outcome, and measurable indicator.]}
+
+\subsection{Importance of This Project}
+
+\begin{enumerate}
+    \item Shows that adaptive firewall behavior can be approximated with open tooling.
+    \item Makes NGFW-like experimentation possible in low-resource settings.
+    \item Produces a practical workflow that can be reused by later batches.
+\end{enumerate}
+
+\section{Requirements}
+
+\subsection{Functional Requirements}
+
+\begin{enumerate}
+    \item Enforce segmented policy between red and blue networks.
+    \item Detect suspicious activity through Suricata rules.
+    \item Export logs to centralized analytics stack.
+    \item Extract and store network features for model training and scoring.
+    \item Generate anomaly and class outputs and present them in dashboard.
+    \item Support repeatable scenario-based traffic generation.
+\end{enumerate}
+
+\subsection{Non-Functional Requirements}
+
+\begin{enumerate}
+    \item Reproducibility of setup and experiments.
+    \item Reasonable processing latency for telemetry and scoring.
+    \item Reliability under concurrent scenario execution.
+    \item Controlled access to orchestration endpoints.
+    \item Maintainable modular architecture.
+\end{enumerate}
+
+\textit{[Table suggestion: non-functional requirement verification describing requirement, validation method, pass criteria, and current status.]}
+
+\subsection{Environment Requirements}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ll}
+\toprule
+Item & Requirement \\
+\midrule
+Host & Virtualization-capable system \\
+Firewall VM & OPNsense with multiple interfaces \\
+Analytics VM & Ubuntu with log + model stack \\
+IDS/IPS & Suricata integration \\
+Data stack & Syslog + SIEM/dashboard tooling \\
+Modeling & Python stack (pandas, scikit-learn, joblib) \\
+Traffic generation & TRex + scripted scenarios \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Methodology}
+
+Method follows build-measure-improve cycle for network defense engineering.
+
+\subsection{Stage 1: Baseline Architecture and Policy}
+\begin{enumerate}
+    \item define trust boundaries and subnets,
+    \item configure explicit allow/deny policy,
+    \item validate route correctness and policy hit behavior.
+\end{enumerate}
+
+\subsection{Stage 2: Detection and Telemetry}
+\begin{enumerate}
+    \item enable Suricata and tune ruleset selection,
+    \item verify syslog forwarding and event integrity,
+    \item align timestamps for proper correlation.
+\end{enumerate}
+
+\subsection{Stage 3: Feature and Model Pipeline}
+\begin{enumerate}
+    \item transform firewall/IDS events into flow-level statistical features,
+    \item train Isolation Forest baseline on mostly normal traffic,
+    \item train Random Forest on labeled scenario dataset,
+    \item integrate outputs into dashboard stream.
+\end{enumerate}
+
+\subsection{Stage 4: Operational Validation}
+\begin{enumerate}
+    \item run scenario-based tests,
+    \item execute TRex stress profiles,
+    \item compare visibility and detection quality across modes.
+\end{enumerate}
+
+\textit{[Image suggestion: methodology pipeline describing stage-wise flow from policy setup to telemetry, model scoring, and validation feedback.]}
+
+\section{Experimentation}
+
+\subsection{Experiment Setup}
+\begin{enumerate}
+    \item segmented test network through OPNsense,
+    \item Suricata active on relevant interfaces,
+    \item centralized telemetry and dashboard,
+    \item model scoring pipeline attached to processed logs,
+    \item traffic from scripted tests and TRex profiles.
+\end{enumerate}
+
+\subsection{Experiment Categories}
+
+\subsubsection{Policy Behavior Tests}
+\begin{enumerate}
+    \item allowed flow confirmation,
+    \item denied flow confirmation,
+    \item restricted egress confirmation.
+\end{enumerate}
+
+\subsubsection{Detection Tests}
+\begin{enumerate}
+    \item known-signature scenarios,
+    \item mixed traffic with overlapping patterns,
+    \item event correlation between firewall and IDS streams.
+\end{enumerate}
+
+\subsubsection{Model Tests}
+\begin{enumerate}
+    \item anomaly score distribution under normal traffic,
+    \item anomaly spikes under suspicious traffic,
+    \item classification quality for labeled attack classes.
+\end{enumerate}
+
+\subsubsection{Load Tests}
+\begin{enumerate}
+    \item low to high TRex profile ramp,
+    \item pipeline lag observation,
+    \item packet drop and resource usage capture.
+\end{enumerate}
+
+\textit{[Image suggestion: traffic load progression describing expected detector behavior from low, medium, and high profile intensity.]}
+
+\subsection{Observation Metrics}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ll}
+\toprule
+Metric Group & Metrics \\
+\midrule
+Detection & event count, severity distribution, signature diversity \\
+Model & confusion matrix, precision, recall, macro F1, anomaly score spread \\
+System & CPU, RAM, ingestion delay, packet drop \\
+Operations & run repeatability, scenario-to-alert correlation \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textit{[Table suggestion: scenario-wise observations describing scenario ID, expected signal, observed signal, notes.]}
+
+\section{Results}
+
+This section is currently a working draft projection and will be updated with final measured values.
+
+\subsection{Expected Outcome Summary}
+\begin{enumerate}
+    \item clear policy enforcement between segmented zones,
+    \item improved visibility through unified telemetry,
+    \item anomaly layer helps spot suspicious behavior beyond direct signatures,
+    \item supervised model helps classify known scenario types for faster triage.
+\end{enumerate}
+
+\subsection{Reporting Template for Final Numbers}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{lll}
+\toprule
+Area & Metric & Value \\
+\midrule
+Signature detection & Total events & [ ] \\
+Signature detection & Distinct signatures & [ ] \\
+Signature detection & High/Critical share & [ ] \\
+Anomaly model & Anomaly ratio & [ ] \\
+Anomaly model & Estimated false positives & [ ] \\
+Classification model & Accuracy & [ ] \\
+Classification model & Macro F1 & [ ] \\
+Performance & Avg ingest delay & [ ] \\
+Performance & Peak analytics CPU & [ ] \\
+Performance & Packet drop at stress & [ ] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Discussion}
+
+From the literature and current implementation trend, some observations are expected:
+
+\begin{enumerate}
+    \item signature-based engines stay strong for known threats,
+    \item anomaly scoring can surface unknown or less-obvious activity,
+    \item classification quality is strongly tied to label quality,
+    \item sidecar pattern keeps enforcement stable while analytics evolves.
+\end{enumerate}
+
+\textit{[Table suggestion: discussion evidence describing each observation, supporting metric, expected trend, and interpretation.]}
+
+\subsection{Current Limitations}
+\begin{enumerate}
+    \item testbed traffic is smaller than enterprise traffic,
+    \item model behavior depends on feature quality and class balance,
+    \item encrypted traffic depth remains a challenge,
+    \item full auto-blocking needs strict guardrails to avoid wrong blocks.
+\end{enumerate}
+
+\textit{[Table suggestion: limitation and mitigation describing limitation, impact level, mitigation plan, and future verification approach.]}
+
+\subsection{Projection and Future Direction}
+\begin{enumerate}
+    \item include richer protocol metadata,
+    \item use dynamic thresholding by time and traffic profile,
+    \item evaluate long-window drift behavior,
+    \item build safer response-policy layer with review controls.
+\end{enumerate}
+
+\section{Deliverables}
+
+\subsection{Technical Deliverables}
+\begin{enumerate}
+    \item configured OPNsense segmentation and firewall policy,
+    \item Suricata-based IDS/IPS setup,
+    \item centralized logging and dashboard views,
+    \item anomaly and classification model scripts/artifacts,
+    \item scenario and TRex traffic profiles,
+    \item experiment logs and observations.
+\end{enumerate}
+
+\textit{[Table suggestion: deliverable tracking describing deliverable name, completion evidence, reviewer remarks, and sign-off status.]}
+
+\subsection{Documentation Deliverables}
+\begin{enumerate}
+    \item architecture write-up,
+    \item setup and configuration notes,
+    \item methodology and metric definitions,
+    \item complete project report.
+\end{enumerate}
+
+\subsection{Academic Deliverables}
+\begin{enumerate}
+    \item literature-based problem framing,
+    \item comparative network defense analysis,
+    \item conclusions and future work proposal.
+\end{enumerate}
+
+\section{References}
+
+\begin{enumerate}
+\item Denning, D. E. (1987). An Intrusion-Detection Model. IEEE Transactions on Software Engineering, SE-13(2), 222-232. \url{https://doi.org/10.1109/TSE.1987.232894}
+\item Neupane, K., Haddad, R., and Chen, L. (2018). Next Generation Firewall for Network Security: A Survey. Proc. IEEE SoutheastCon, 1-6. \url{https://doi.org/10.1109/SECON.2018.8478973}
+\item Liang, J., and Kim, Y. (2022). Evolution of Firewalls: Toward Securer Network Using Next Generation Firewall. Proc. IEEE CCWC, 752-759. \url{https://doi.org/10.1109/CCWC54503.2022.9720435}
+\item Heino, J., Hakkala, A., and Virtanen, S. (2022). Study of Methods for Endpoint Aware Inspection in a Next Generation Firewall. Cybersecurity, 5(1), 1-19. \url{https://doi.org/10.1186/s42400-022-00127-8}
+\item Scarfone, K., and Hoffman, P. (2009). Guidelines on Firewalls and Firewall Policy (NIST SP 800-41 Rev. 1). National Institute of Standards and Technology. \url{https://doi.org/10.6028/NIST.SP.800-41r1}
+\item Ingham, K., and Forrest, S. (2002). A History and Survey of Network Firewalls. University of New Mexico, TR-2002-12.
+\item Cheswick, W. R., and Bellovin, S. M. (1994). Firewalls and Internet Security: Repelling the Wily Hacker. Addison-Wesley.
+\item Roesch, M. (1999). Snort - Lightweight Intrusion Detection for Networks. Proc. USENIX LISA.
+\item Paxson, V. (1999). Bro: A System for Detecting Network Intruders in Real-Time. Computer Networks, 31(23-24), 2435-2463. \url{https://doi.org/10.1016/S1389-1286(99)00112-7}
+\item Khraisat, A., Gondal, I., Vamplew, P., and Kamruzzaman, J. (2019). Survey of Intrusion Detection Systems: Techniques, Datasets and Challenges. Cybersecurity, 2(1), 1-22. \url{https://doi.org/10.1186/s42400-019-0038-7}
+\item Liao, H.-J., Lin, C.-H. R., Lin, Y.-C., and Tung, K.-Y. (2013). Intrusion Detection System: A Comprehensive Review. Journal of Network and Computer Applications, 36(1), 16-24. \url{https://doi.org/10.1016/j.jnca.2012.09.004}
+\item Ahmad, Z., Shahid Khan, A., Wai Shiang, C., Abdullah, J., and Ahmad, F. (2021). Network Intrusion Detection System: A Systematic Study of Machine Learning and Deep Learning Approaches. Transactions on Emerging Telecommunications Technologies, 32(1), e4150. \url{https://doi.org/10.1002/ett.4150}
+\item Liu, H., and Lang, B. (2019). Machine Learning and Deep Learning Methods for Intrusion Detection Systems: A Survey. Applied Sciences, 9(20), 4396. \url{https://doi.org/10.3390/app9204396}
+\item Dini, P., Elhanashi, A., Begni, A., Saponara, S., Zheng, Q., and Gasri, D. (2023). Overview on Intrusion Detection Systems Design Exploiting Machine Learning for Networking Cybersecurity. Applied Sciences, 13(13), 7507. \url{https://doi.org/10.3390/app13137507}
+\item Chandola, V., Banerjee, A., and Kumar, V. (2009). Anomaly Detection: A Survey. ACM Computing Surveys, 41(3), 1-58. \url{https://doi.org/10.1145/1541880.1541882}
+\item Liu, F. T., Ting, K. M., and Zhou, Z.-H. (2008). Isolation Forest. Proc. IEEE ICDM, 413-422. \url{https://doi.org/10.1109/ICDM.2008.17}
+\item Tao, X., Peng, Y., Zhao, F., Zhao, P., and Wang, Y. (2018). A Parallel Algorithm for Network Traffic Anomaly Detection Based on Isolation Forest. International Journal of Distributed Sensor Networks, 14(11). \url{https://doi.org/10.1177/1550147718814471}
+\item Al Farizi, W. S., Hidayah, I., and Rizal, M. N. (2021). Isolation Forest Based Anomaly Detection: A Systematic Literature Review. Proc. IEEE ICITACEE. \url{https://doi.org/10.1109/ICITACEE53184.2021.9617498}
+\item Cheng, Z., Zou, C., and Dong, J. (2019). Outlier Detection Using Isolation Forest and Local Outlier Factor. Proc. ACM CARMA, 161-168. \url{https://doi.org/10.1145/3338840.3355641}
+\item Song, W., Beshley, M., Przystupa, K., Beshley, H., Kochan, O., Pryslupskyi, A., Pieniak, D., and Su, J. (2020). A Software Deep Packet Inspection System for Network Traffic Analysis and Anomaly Detection. Sensors, 20(6), 1637. \url{https://doi.org/10.3390/s20061637}
+\item Sultana, N., Chilamkurti, N., Peng, W., and Alhadad, R. (2019). Survey on SDN Based Network Intrusion Detection System Using Machine Learning Approaches. Peer-to-Peer Networking and Applications, 12(2), 493-501. \url{https://doi.org/10.1007/s12083-017-0630-0}
+\item Vartouni, A. M., Kaki, S. S., and Teshnehlab, M. (2019). Leveraging Deep Neural Networks for Anomaly-Based Web Application Firewall. IET Information Security, 13(4), 352-361. \url{https://doi.org/10.1049/iet-ifs.2018.5404}
+\item Zhang, C., Jia, D., Wang, L., Wang, W., Liu, F., and Yang, A. (2022). Comparative Research on Network Intrusion Detection Methods Based on Machine Learning. Computers and Security, 121, 102861. \url{https://doi.org/10.1016/j.cose.2022.102861}
+\item Da Costa, K. A. P., Papa, J. P., Lisboa, C. O., Munoz, R., and de Albuquerque, V. H. C. (2019). Internet of Things: A Survey on Machine Learning-Based Intrusion Detection Approaches. Computer Networks, 151, 147-157. \url{https://doi.org/10.1016/j.comnet.2019.01.023}
+\item Kiratsata, H. J., Raval, D. P., and Viras, P. K. (2022). Behaviour Analysis of Open-Source Firewalls Under Security Crisis. Proc. IEEE ICDCECE. \url{https://doi.org/10.1109/ICDCECE53908.2022.9767176}
+\item Che, C. K. N. S. A., and Rafee, K. M. (2023). Towards Secure Local Area Network (LAN) Using OPNsense Firewall. Malaysian Journal of Computing and Applied Mathematics.
+\item Olivera-Ruiz, G., and Solsol-Isminio, J. (2024). Next-Generation Firewall Open-Source and LAN Performance. Proc. IEEE LACCCEI. \url{https://doi.org/10.1109/LACCCEI62174.2024.10767614}
+\item Mohile, A. (2023). Next-Generation Firewalls: A Performance-Driven Approach to Contextual Threat Prevention. International Journal of Computer Technology and Electronics Communication.
+\item Lamdakkar, O., Ameur, I., Eleyatt, M. M., and Carlier, F. (2024). Toward a Modern Secure Network Based on Next-Generation Firewalls: Recommendations and Best Practices. Procedia Computer Science. \url{https://doi.org/10.1016/j.procs.2024.09.242}
+\item Singh, L., and Singh, R. (2024). Comparative Analysis of Traditional Firewalls and Next-Generation Firewalls: A Review. In Latest Trends in Engineering and Technology. Taylor and Francis. \url{https://doi.org/10.1201/9781032665443-3}
+\item George, A. S., and George, A. S. H. (2021). A Brief Study on the Evolution of Next Generation Firewall and Web Application Firewall. International Journal of Advanced Research in Computer and Communication Engineering, 10(5).
+\item Mukkamala, P. P., and Rajendran, S. (2020). A Survey on the Different Firewall Technologies. International Journal of Engineering Applied Sciences and Technology, 5(1).
+\item He, K., Kim, D. D., and Asghar, M. R. (2023). Adversarial Machine Learning for Network Intrusion Detection Systems: A Comprehensive Survey. IEEE Communications Surveys and Tutorials, 25(1), 538-566. \url{https://doi.org/10.1109/COMST.2022.3233132}
+\item Psychogyios, K., Boubendir, A., et al. (2024). A Survey of DDoS Attack and Defence: Architectures, Taxonomy and Mitigation. Future Internet, 16(3), 73. \url{https://doi.org/10.3390/fi16030073}
+\end{enumerate}
+
+\end{document}
