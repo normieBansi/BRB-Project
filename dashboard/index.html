@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src *; img-src 'self' data:; frame-ancestors 'none';">
+  <title>NGFW Lab Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --card: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --blue: #58a6ff;
+      --green: #3fb950;
+      --red: #f85149;
+      --yellow: #d29922;
+      --orange: #e3b341;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: ui-monospace, 'Cascadia Code', 'Courier New', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo { font-size: 1rem; font-weight: 700; color: var(--blue); letter-spacing: 0.03em; }
+    .status-bar { display: flex; align-items: center; gap: 1rem; font-size: 0.78rem; color: var(--muted); }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+      display: inline-block;
+      animation: blink 2s infinite;
+    }
+    .dot.offline { background: var(--red); animation: none; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    /* ── Config bar ── */
+    .config-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.6rem 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .cfg-group { display: flex; align-items: center; gap: 0.4rem; }
+    .cfg-group label { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+    .cfg-group input[type="url"],
+    .cfg-group input[type="password"] {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-family: inherit;
+      width: 260px;
+      transition: border-color 0.2s;
+    }
+    .cfg-group input:focus { outline: none; border-color: var(--blue); }
+    .mock-group { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; font-size: 0.78rem; color: var(--muted); }
+    .toggle { position: relative; width: 38px; height: 21px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 21px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 15px; height: 15px;
+      left: 2px; top: 2px;
+      background: var(--muted);
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+    input:checked + .slider { background: var(--blue); border-color: var(--blue); }
+    input:checked + .slider::before { transform: translateX(17px); background: #fff; }
+
+    /* ── Tabs ── */
+    .tabs {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 1.5rem;
+      display: flex;
+    }
+    .tab-btn {
+      background: none; border: none; color: var(--muted);
+      padding: 0.65rem 1.1rem;
+      cursor: pointer; font-size: 0.88rem; font-family: inherit;
+      border-bottom: 2px solid transparent;
+      transition: color 0.2s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+    /* ── Main layout ── */
+    main { padding: 1.25rem 1.5rem; max-width: 1500px; margin: 0 auto; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .row-bar {
+      font-size: 0.73rem; color: var(--muted);
+      display: flex; justify-content: flex-end; align-items: center;
+      gap: 0.75rem; margin-bottom: 1rem;
+    }
+    .btn-sm {
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); padding: 0.2rem 0.65rem;
+      border-radius: 4px; cursor: pointer; font-size: 0.73rem;
+      font-family: inherit; transition: color 0.2s, border-color 0.2s;
+    }
+    .btn-sm:hover { color: var(--text); border-color: var(--text); }
+
+    /* ── Summary cards ── */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.9rem; margin-bottom: 1.25rem; }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.9rem 1rem;
+    }
+    .card-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    .card-value { font-size: 1.75rem; font-weight: 700; line-height: 1; }
+    .card-value.red { color: var(--red); }
+    .card-value.yellow { color: var(--yellow); }
+    .card-value.green { color: var(--green); }
+    .card-value.blue { color: var(--blue); }
+    .card-value.orange { color: var(--orange); }
+
+    /* ── Panels and grids ── */
+    .panel {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem; margin-bottom: 1rem;
+    }
+    .panel-title {
+      font-size: 0.7rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin-bottom: 0.85rem;
+    }
+    .chart-wrap { position: relative; height: 190px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    th {
+      background: var(--surface); color: var(--muted); font-weight: 500;
+      padding: 0.45rem 0.75rem; text-align: left;
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    td { padding: 0.38rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--text); }
+    tbody tr:hover td { background: rgba(255,255,255,0.025); }
+    .truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block; padding: 0.12rem 0.45rem;
+      border-radius: 3px; font-size: 0.68rem; font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .b-high   { background: rgba(248,81,73,.18);  color: var(--red); }
+    .b-med    { background: rgba(210,153,34,.18); color: var(--yellow); }
+    .b-low    { background: rgba(63,185,80,.18);  color: var(--green); }
+    .b-info   { background: rgba(88,166,255,.18); color: var(--blue); }
+    .b-block  { background: rgba(248,81,73,.18);  color: var(--red); }
+    .b-pass   { background: rgba(63,185,80,.18);  color: var(--green); }
+    .b-alert  { background: rgba(210,153,34,.18); color: var(--yellow); }
+    .b-ok     { background: rgba(63,185,80,.18);  color: var(--green); }
+    .b-anom   { background: rgba(227,179,65,.18); color: var(--orange); }
+
+    /* ── Control panel ── */
+    .control-grid {
+      display: grid; grid-template-columns: 340px 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 800px) { .control-grid { grid-template-columns: 1fr; } }
+    .launch-box {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.1rem;
+    }
+    .launch-box h3 { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.9rem; }
+    select {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 0.45rem 0.65rem;
+      border-radius: 4px; font-size: 0.88rem; font-family: inherit;
+      margin-bottom: 0.5rem; appearance: none;
+    }
+    select:focus { outline: none; border-color: var(--blue); }
+    .scen-desc { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.75rem; line-height: 1.5; min-height: 36px; }
+    .btn-launch {
+      width: 100%; background: var(--blue); border: none; color: #fff;
+      padding: 0.6rem; border-radius: 5px; font-size: 0.9rem;
+      font-weight: 700; cursor: pointer; font-family: inherit;
+      transition: opacity 0.2s;
+    }
+    .btn-launch:hover { opacity: 0.85; }
+    .btn-launch:disabled { opacity: 0.35; cursor: not-allowed; }
+    .launch-out {
+      margin-top: 0.75rem; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 0.65rem; font-size: 0.75rem; color: var(--muted);
+      min-height: 56px; word-break: break-all; white-space: pre-wrap;
+    }
+    .run-log-box {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.1rem;
+    }
+    .run-log-box h3 { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">&#9632; NGFW Lab Security Dashboard</div>
+  <div class="status-bar">
+    <span><span class="dot offline" id="conn-dot"></span> <span id="conn-label">Mock Mode</span></span>
+    <span id="last-refresh"></span>
+  </div>
+</header>
+
+<div class="config-bar">
+  <div class="cfg-group">
+    <label for="api-url">API Base URL</label>
+    <input type="url" id="api-url" value="http://localhost:5000"
+           placeholder="https://your-tunnel.trycloudflare.com">
+  </div>
+  <div class="cfg-group">
+    <label for="api-token">API Token</label>
+    <input type="password" id="api-token" placeholder="Enter token">
+  </div>
+  <div class="mock-group">
+    <span>Mock&nbsp;Mode</span>
+    <label class="toggle">
+      <input type="checkbox" id="mock-toggle" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+</div>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="control">&#9654; Attack Control</button>
+  <button class="tab-btn" data-tab="telemetry">&#9741; Telemetry</button>
+  <button class="tab-btn" data-tab="ml">&#9881; ML Analytics</button>
+</nav>
+
+<main>
+
+  <!-- ═══════════════════════════════════════ CONTROL ═══ -->
+  <div class="tab-panel active" id="tab-control">
+    <div class="control-grid">
+
+      <div class="launch-box">
+        <h3>Launch Scenario</h3>
+        <select id="scenario-select">
+          <option value="tcp_syn_burst">TCP SYN Burst</option>
+          <option value="web_scan">Web Scan</option>
+          <option value="ssh_bruteforce_sim">SSH Brute Force Simulation</option>
+          <option value="sql_injection_sim">SQL Injection Simulation</option>
+        </select>
+        <div class="scen-desc" id="scen-desc"></div>
+        <button class="btn-launch" id="btn-launch">&#9654;&nbsp; Launch</button>
+        <div class="launch-out" id="launch-out">Ready. Select a scenario and click Launch.</div>
+      </div>
+
+      <div class="run-log-box">
+        <h3>Recent Runs</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Scenario</th>
+                <th>Run ID</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="run-log-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ TELEMETRY ═══ -->
+  <div class="tab-panel" id="tab-telemetry">
+    <div class="row-bar">
+      <button class="btn-sm" onclick="refreshTelemetry()">&#8635; Refresh</button>
+      <span id="telem-ts"></span>
+    </div>
+    <div class="cards" id="summary-cards"></div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">Alerts Over Time (5 min buckets)</div>
+        <div class="chart-wrap"><canvas id="ch-timeline"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Alert Severity Distribution</div>
+        <div class="chart-wrap"><canvas id="ch-severity"></canvas></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">Top Source IPs</div>
+        <div class="chart-wrap"><canvas id="ch-sources"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Top Destination Ports</div>
+        <div class="chart-wrap"><canvas id="ch-ports"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Recent Events</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Src IP</th>
+              <th>Dst IP</th>
+              <th>Port</th>
+              <th>Proto</th>
+              <th>Action</th>
+              <th>Signature</th>
+              <th>Severity</th>
+            </tr>
+          </thead>
+          <tbody id="events-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ ML ═══ -->
+  <div class="tab-panel" id="tab-ml">
+    <div class="row-bar">
+      <button class="btn-sm" onclick="refreshML()">&#8635; Refresh</button>
+      <span id="ml-ts"></span>
+    </div>
+    <div class="cards" id="ml-cards"></div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">Anomaly Score Trend — Isolation Forest (lower = more anomalous)</div>
+        <div class="chart-wrap"><canvas id="ch-anomaly"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Predicted Class Distribution — Random Forest</div>
+        <div class="chart-wrap"><canvas id="ch-pred-dist"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Recent ML Predictions</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Src IP</th>
+              <th>Dst Port</th>
+              <th>Anomaly Score</th>
+              <th>Anomaly Flag</th>
+              <th>Predicted Class</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="ml-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ───────────────────────────────────────────────────────────
+//  Config
+// ───────────────────────────────────────────────────────────
+const SCEN_DESCS = {
+  tcp_syn_burst:       'Sends 500 TCP SYN packets to the target to simulate a SYN flood or port scan.',
+  web_scan:            'Runs Nikto probes and curl-based injection strings against the HTTP target.',
+  ssh_bruteforce_sim:  'Issues 25 SSH login attempts in quick succession to simulate a brute force.',
+  sql_injection_sim:   'Sends SQLi payloads via HTTP to trigger SQL injection IDS signatures.',
+};
+
+let charts = {};
+let runLog = [];
+let autoRefId = null;
+
+// ───────────────────────────────────────────────────────────
+//  Helpers
+// ───────────────────────────────────────────────────────────
+function apiBase() { return (document.getElementById('api-url').value || '').replace(/\/$/, ''); }
+function apiToken() { return document.getElementById('api-token').value || ''; }
+function isMock()  { return document.getElementById('mock-toggle').checked; }
+
+function fmtTime(isoStr) {
+  try { return new Date(isoStr).toLocaleTimeString(); } catch { return isoStr; }
+}
+
+function rnd(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// Safely set text in a td (never innerHTML)
+function td(text) {
+  const el = document.createElement('td');
+  el.textContent = String(text ?? '');
+  return el;
+}
+
+function badge(text, cls) {
+  const sp = document.createElement('span');
+  sp.className = 'badge ' + cls;
+  sp.textContent = String(text);
+  return sp;
+}
+
+function severityBadge(s) {
+  const v = String(s).toLowerCase();
+  if (v === 'high'   || v === '1') return badge('HIGH',   'b-high');
+  if (v === 'medium' || v === '2') return badge('MED',    'b-med');
+  if (v === 'low'    || v === '3') return badge('LOW',    'b-low');
+  return badge(s, 'b-info');
+}
+
+function actionBadge(a) {
+  const v = String(a).toLowerCase();
+  if (['block','drop','reject'].includes(v)) return badge(v.toUpperCase(), 'b-block');
+  if (v === 'alert') return badge('ALERT', 'b-alert');
+  return badge(v.toUpperCase(), 'b-pass');
+}
+
+function anomalyBadge(flag) {
+  return (flag === -1 || flag === true || flag === 'anomaly')
+    ? badge('ANOMALY', 'b-anom')
+    : badge('NORMAL',  'b-ok');
+}
+
+async function apiFetch(path, opts = {}) {
+  const url = apiBase() + path;
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Token': apiToken(),
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+// ───────────────────────────────────────────────────────────
+//  Tab switching
+// ───────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'telemetry') refreshTelemetry();
+    if (btn.dataset.tab === 'ml')        refreshML();
+  });
+});
+
+// ───────────────────────────────────────────────────────────
+//  Mock toggle
+// ───────────────────────────────────────────────────────────
+document.getElementById('mock-toggle').addEventListener('change', function () {
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  if (this.checked) {
+    dot.classList.add('offline');
+    label.textContent = 'Mock Mode';
+  } else {
+    dot.classList.remove('offline');
+    label.textContent = 'Live Mode';
+  }
+});
+
+// ───────────────────────────────────────────────────────────
+//  Scenario description
+// ───────────────────────────────────────────────────────────
+const scenSel = document.getElementById('scenario-select');
+function updateDesc() {
+  document.getElementById('scen-desc').textContent = SCEN_DESCS[scenSel.value] || '';
+}
+scenSel.addEventListener('change', updateDesc);
+updateDesc();
+
+// ───────────────────────────────────────────────────────────
+//  Launch
+// ───────────────────────────────────────────────────────────
+document.getElementById('btn-launch').addEventListener('click', async () => {
+  const scenario = scenSel.value;
+  const outEl    = document.getElementById('launch-out');
+  const btn      = document.getElementById('btn-launch');
+  btn.disabled   = true;
+
+  if (isMock()) {
+    const run_id = 'mock-' + Math.random().toString(36).slice(2, 10);
+    const entry  = { ts: new Date().toLocaleTimeString(), scenario, run_id, status: 'accepted' };
+    runLog.unshift(entry);
+    renderRunLog();
+    outEl.textContent = JSON.stringify({ status: 'accepted (mock)', scenario, run_id }, null, 2);
+    btn.disabled = false;
+    return;
+  }
+
+  try {
+    const data = await apiFetch('/launch', {
+      method: 'POST',
+      body: JSON.stringify({ scenario }),
+    });
+    runLog.unshift({ ts: new Date().toLocaleTimeString(), scenario, run_id: data.run_id, status: data.status });
+    renderRunLog();
+    outEl.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    outEl.textContent = 'Error: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderRunLog() {
+  const tbody = document.getElementById('run-log-body');
+  tbody.innerHTML = '';
+  runLog.slice(0, 30).forEach(e => {
+    const tr = document.createElement('tr');
+    const tdId = document.createElement('td');
+    tdId.textContent = e.run_id;
+    tdId.style.fontSize = '0.7rem';
+    tr.append(td(e.ts), td(e.scenario), tdId);
+    const tdStatus = document.createElement('td');
+    tdStatus.appendChild(badge(e.status, 'b-info'));
+    tr.appendChild(tdStatus);
+    tbody.appendChild(tr);
+  });
+}
+
+// ───────────────────────────────────────────────────────────
+//  Mock data generators
+// ───────────────────────────────────────────────────────────
+function mockEvents(n = 20) {
+  const sigs = [
+    'ET SCAN Nmap SYN Scan Detected', 'ET WEB_SERVER SQL Injection Attempt',
+    'ET SCAN SSH Brute Force Attempt', 'ET WEB_SERVER Nikto Scan Detected',
+    'ET EXPLOIT RCE Attempt', 'ET SCAN Aggressive Scan',
+    'ET WEB_SERVER Directory Traversal', 'ET SCAN Port Sweep',
+  ];
+  return Array.from({ length: n }, () => ({
+    timestamp: new Date(Date.now() - rnd(0, 3_600_000)).toISOString(),
+    src_ip:    '192.168.60.10',
+    dst_ip:    '192.168.50.10',
+    dst_port:  pick([80, 443, 22, 5000, 8080, 21]),
+    proto:     pick(['TCP', 'TCP', 'UDP']),
+    action:    pick(['alert', 'alert', 'pass', 'block']),
+    signature: pick(sigs),
+    severity:  pick(['high', 'high', 'medium', 'medium', 'low']),
+  })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+}
+
+function mockSummary() {
+  return {
+    total_alerts: rnd(80, 250),
+    blocked:      rnd(20, 70),
+    high_sev:     rnd(15, 50),
+    medium_sev:   rnd(25, 80),
+    low_sev:      rnd(10, 40),
+    anomalies:    rnd(5, 35),
+    active_flows: rnd(1, 25),
+    over_time: Array.from({ length: 12 }, (_, i) => ({
+      label: new Date(Date.now() - (11 - i) * 300_000)
+        .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      count: rnd(2, 30),
+    })),
+    top_sources: [
+      { ip: '192.168.60.10', count: rnd(60, 180) },
+      { ip: '192.168.50.10', count: rnd(5, 25) },
+      { ip: '10.0.2.15',     count: rnd(1, 10) },
+    ],
+    top_ports: [
+      { port: 80,   count: rnd(40, 120) },
+      { port: 22,   count: rnd(25, 90) },
+      { port: 443,  count: rnd(15, 60) },
+      { port: 5000, count: rnd(5,  30) },
+      { port: 8080, count: rnd(5,  20) },
+    ],
+  };
+}
+
+function mockMLRows(n = 15) {
+  const classes = ['benign', 'benign', 'benign', 'scan', 'web_attack', 'brute_force', 'flood'];
+  return Array.from({ length: n }, () => {
+    const anom = Math.random() < 0.3;
+    return {
+      timestamp:       new Date(Date.now() - rnd(0, 3_600_000)).toISOString(),
+      src_ip:          '192.168.60.10',
+      dst_port:        pick([80, 22, 443, 5000]),
+      anomaly_score:   anom ? -(Math.random() * 0.25 + 0.05) : (Math.random() * 0.15 + 0.01),
+      anomaly_flag:    anom ? -1 : 1,
+      predicted_class: anom ? pick(['scan', 'web_attack', 'brute_force']) : 'benign',
+      confidence:      Math.random() * 0.3 + 0.7,
+    };
+  }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+}
+
+function mockMLSummary() {
+  const dist = {
+    benign:      rnd(200, 400),
+    scan:        rnd(30,  100),
+    web_attack:  rnd(20,  80),
+    brute_force: rnd(10,  50),
+    flood:       rnd(5,   30),
+  };
+  return {
+    total_scored: Object.values(dist).reduce((a, b) => a + b, 0),
+    anomaly_pct:  (Math.random() * 20 + 5).toFixed(1),
+    top_class:    'benign',
+    distribution: dist,
+    trend: Array.from({ length: 12 }, (_, i) => ({
+      label: new Date(Date.now() - (11 - i) * 300_000)
+        .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      score: -(Math.random() * 0.18),
+    })),
+  };
+}
+
+// ───────────────────────────────────────────────────────────
+//  Chart helpers
+// ───────────────────────────────────────────────────────────
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#30363d' } },
+    y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#30363d' }, beginAtZero: true },
+  },
+};
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+// ───────────────────────────────────────────────────────────
+//  Telemetry
+// ───────────────────────────────────────────────────────────
+async function refreshTelemetry() {
+  document.getElementById('telem-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  let summary, events;
+
+  if (isMock()) {
+    summary = mockSummary();
+    events  = mockEvents(20);
+  } else {
+    try {
+      [summary, events] = await Promise.all([
+        apiFetch('/telemetry/summary'),
+        apiFetch('/telemetry/events?limit=20').then(r => r.events || r),
+      ]);
+    } catch (err) {
+      document.getElementById('telem-ts').textContent = 'Error: ' + err.message;
+      return;
+    }
+  }
+
+  renderSummaryCards(summary);
+  renderTimeline(summary);
+  renderSeverity(summary);
+  renderSources(summary);
+  renderPorts(summary);
+  renderEventsTable(events);
+}
+
+function renderSummaryCards(s) {
+  const el = document.getElementById('summary-cards');
+  el.innerHTML = '';
+  [
+    { label: 'Total Alerts',  val: s.total_alerts,  cls: 'red'    },
+    { label: 'Blocked',       val: s.blocked,       cls: 'red'    },
+    { label: 'High Severity', val: s.high_sev,      cls: 'yellow' },
+    { label: 'Anomalies',     val: s.anomalies,     cls: 'orange' },
+    { label: 'Active Flows',  val: s.active_flows,  cls: 'blue'   },
+  ].forEach(item => {
+    const card  = document.createElement('div'); card.className = 'card';
+    const label = document.createElement('div'); label.className = 'card-label'; label.textContent = item.label;
+    const val   = document.createElement('div'); val.className = 'card-value ' + item.cls; val.textContent = item.val;
+    card.append(label, val);
+    el.appendChild(card);
+  });
+}
+
+function renderTimeline(s) {
+  destroyChart('timeline');
+  const ctx = document.getElementById('ch-timeline').getContext('2d');
+  charts.timeline = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: s.over_time.map(d => d.label),
+      datasets: [{
+        data: s.over_time.map(d => d.count),
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,.1)',
+        tension: 0.3, fill: true, pointRadius: 3,
+      }],
+    },
+    options: { ...CHART_DEFAULTS },
+  });
+}
+
+function renderSeverity(s) {
+  destroyChart('severity');
+  const ctx = document.getElementById('ch-severity').getContext('2d');
+  charts.severity = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['High', 'Medium', 'Low'],
+      datasets: [{
+        data: [s.high_sev, s.medium_sev, s.low_sev],
+        backgroundColor: ['#f85149', '#d29922', '#3fb950'],
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'right', labels: { color: '#8b949e', boxWidth: 12 } } },
+    },
+  });
+}
+
+function renderSources(s) {
+  destroyChart('sources');
+  const ctx = document.getElementById('ch-sources').getContext('2d');
+  charts.sources = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: s.top_sources.map(d => d.ip),
+      datasets: [{ data: s.top_sources.map(d => d.count), backgroundColor: '#58a6ff' }],
+    },
+    options: { ...CHART_DEFAULTS, indexAxis: 'y' },
+  });
+}
+
+function renderPorts(s) {
+  destroyChart('ports');
+  const ctx = document.getElementById('ch-ports').getContext('2d');
+  charts.ports = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: s.top_ports.map(d => String(d.port)),
+      datasets: [{ data: s.top_ports.map(d => d.count), backgroundColor: '#3fb950' }],
+    },
+    options: { ...CHART_DEFAULTS },
+  });
+}
+
+function renderEventsTable(events) {
+  const tbody = document.getElementById('events-body');
+  tbody.innerHTML = '';
+  events.forEach(ev => {
+    const tr = document.createElement('tr');
+    tr.append(
+      td(fmtTime(ev.timestamp)),
+      td(ev.src_ip),
+      td(ev.dst_ip),
+      td(ev.dst_port),
+      td(ev.proto),
+    );
+    const tdA = document.createElement('td'); tdA.appendChild(actionBadge(ev.action));   tr.appendChild(tdA);
+    const tdS = document.createElement('td'); tdS.textContent = ev.signature;
+    tdS.className = 'truncate'; tdS.title = ev.signature;                                tr.appendChild(tdS);
+    const tdSv = document.createElement('td'); tdSv.appendChild(severityBadge(ev.severity)); tr.appendChild(tdSv);
+    tbody.appendChild(tr);
+  });
+}
+
+// ───────────────────────────────────────────────────────────
+//  ML Analytics
+// ───────────────────────────────────────────────────────────
+async function refreshML() {
+  document.getElementById('ml-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  let mlSummary, mlRows;
+
+  if (isMock()) {
+    mlSummary = mockMLSummary();
+    mlRows    = mockMLRows(15);
+  } else {
+    try {
+      [mlSummary, mlRows] = await Promise.all([
+        apiFetch('/ml/summary'),
+        apiFetch('/ml/predictions?limit=15').then(r => r.predictions || r),
+      ]);
+    } catch (err) {
+      document.getElementById('ml-ts').textContent = 'Error: ' + err.message;
+      return;
+    }
+  }
+
+  renderMLCards(mlSummary);
+  renderAnomalyTrend(mlSummary);
+  renderPredDist(mlSummary);
+  renderMLTable(mlRows);
+}
+
+function renderMLCards(s) {
+  const el = document.getElementById('ml-cards');
+  el.innerHTML = '';
+  [
+    { label: 'Total Scored',  val: s.total_scored,       cls: 'blue'   },
+    { label: 'Anomaly Rate',  val: s.anomaly_pct + '%',  cls: 'orange' },
+    { label: 'Top Class',     val: s.top_class,          cls: 'green'  },
+  ].forEach(item => {
+    const card  = document.createElement('div'); card.className = 'card';
+    const label = document.createElement('div'); label.className = 'card-label'; label.textContent = item.label;
+    const val   = document.createElement('div'); val.className = 'card-value ' + item.cls; val.textContent = item.val;
+    card.append(label, val);
+    el.appendChild(card);
+  });
+}
+
+function renderAnomalyTrend(s) {
+  destroyChart('anomaly');
+  const ctx = document.getElementById('ch-anomaly').getContext('2d');
+  charts.anomaly = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: s.trend.map(d => d.label),
+      datasets: [{
+        label: 'Avg Anomaly Score',
+        data: s.trend.map(d => d.score),
+        borderColor: '#e3b341',
+        backgroundColor: 'rgba(227,179,65,.1)',
+        tension: 0.3, fill: true, pointRadius: 3,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        legend: { display: true, labels: { color: '#8b949e', boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ' Score: ' + ctx.parsed.y.toFixed(4),
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderPredDist(s) {
+  destroyChart('predDist');
+  const dist = s.distribution || {};
+  const ctx  = document.getElementById('ch-pred-dist').getContext('2d');
+  const COLORS = ['#3fb950', '#58a6ff', '#f85149', '#d29922', '#e3b341', '#bc8cff'];
+  charts.predDist = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: Object.keys(dist),
+      datasets: [{
+        data: Object.values(dist),
+        backgroundColor: Object.keys(dist).map((_, i) => COLORS[i % COLORS.length]),
+      }],
+    },
+    options: { ...CHART_DEFAULTS },
+  });
+}
+
+function renderMLTable(rows) {
+  const tbody = document.getElementById('ml-body');
+  tbody.innerHTML = '';
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.append(
+      td(fmtTime(row.timestamp)),
+      td(row.src_ip),
+      td(row.dst_port),
+      td(parseFloat(row.anomaly_score).toFixed(4)),
+    );
+    const tdF = document.createElement('td'); tdF.appendChild(anomalyBadge(row.anomaly_flag)); tr.appendChild(tdF);
+    tr.append(td(row.predicted_class));
+    const conf = document.createElement('td');
+    const pct  = (parseFloat(row.confidence) * 100).toFixed(1) + '%';
+    conf.textContent = pct;
+    tr.appendChild(conf);
+    tbody.appendChild(tr);
+  });
+}
+
+// ───────────────────────────────────────────────────────────
+//  Auto-refresh (30 s)
+// ───────────────────────────────────────────────────────────
+function startAutoRefresh() {
+  if (autoRefId) clearInterval(autoRefId);
+  autoRefId = setInterval(() => {
+    const active = document.querySelector('.tab-btn.active')?.dataset.tab;
+    if (active === 'telemetry') refreshTelemetry();
+    if (active === 'ml')        refreshML();
+    document.getElementById('last-refresh').textContent =
+      'Auto &#8635; ' + new Date().toLocaleTimeString();
+  }, 30_000);
+}
+
+// ───────────────────────────────────────────────────────────
+//  Init
+// ───────────────────────────────────────────────────────────
+(function init() {
+  document.getElementById('conn-dot').classList.add('offline');
+  refreshTelemetry();
+  startAutoRefresh();
+})();
+</script>
+</body>
+</html>

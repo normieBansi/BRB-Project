@@ -1,5 +1,9 @@
 # OPNsense Click-by-Click Checklist
 
+**Navigation:** [Kali Checklist](Kali_Checklist.md) | [Ubuntu Checklist](Ubuntu_Checklist.md) | [Lab Guide](NGFW_3Day_Lab_Guide.md)
+
+---
+
 This document is a direct execution checklist for the OPNsense part of the project. It is intentionally procedural. Follow it in order.
 
 Lab context for this checklist:
@@ -329,7 +333,7 @@ On Ubuntu:
 ```bash
 sudo apt update
 sudo apt install -y apache2 curl
-sudo systemctl enable --now apache2
+sudo service apache2 start
 curl http://127.0.0.1
 ```
 
