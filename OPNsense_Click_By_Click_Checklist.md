@@ -2,7 +2,18 @@
 
 This document is a direct execution checklist for the OPNsense part of the project. It is intentionally procedural. Follow it in order.
 
+Lab context for this checklist:
+
+1. OPNsense runs in its own VM with 2 vCPU, 2 GB RAM, and 10 GB storage.
+2. Debian runs in a separate VM with 4 vCPU, 4 GB RAM, and 40 GB storage.
+3. Debian hosts the Podman containers for Kali and Ubuntu.
+4. Kali lives on 192.168.60.0/24 behind OPT1.
+5. Ubuntu lives on 192.168.50.0/24 behind LAN.
+6. Keep OPNsense work lightweight and do heavier logging, dashboard, ML, and traffic generation work on Debian.
+
 ---
+
+## Day 1 - Base OPNsense Policy and IDS Baseline
 
 ## 1. Before Logging In
 
@@ -274,7 +285,7 @@ Save.
 ### 8.2 Download Rules
 
 1. Open Services > Intrusion Detection > Download.
-2. Enable ET Open only.
+2. Enable ET Open only for the first pass.
 3. Leave abuse.ch disabled for now.
 4. Leave OPNsense-App-detect disabled for now.
 5. Click Download or Update Rules.
@@ -425,17 +436,145 @@ After validation:
 
 ---
 
-## 12. Optional Internet Publishing Support
+## Day 2 - OPNsense Support for Logging, Dashboard, and Controlled Access
+
+## 12. Day 2 Preconditions
+
+Only continue when these are true:
+
+1. Day 1 firewall rules are working.
+2. Suricata is producing alerts in IDS mode.
+3. Debian is reachable at the Ubuntu-side IP you plan to use for log collection and dashboards.
+4. Debian has rsyslog or another listener ready before you point OPNsense logging at it.
+
+---
+
+## 13. Day 2 Logging and Management Steps
+
+### 13.1 Confirm OPNsense Can Reach Debian Services
+
+1. Open Interfaces > Diagnostics > Ping if available, or use System > Diagnostics > Ping.
+2. Ping the Debian-side service IP on the LAN segment.
+3. If Debian is represented by the Ubuntu container IP for logging, ping 192.168.50.10.
+4. If ping fails, stop and fix routing before changing logging settings.
+
+### 13.2 Configure Remote Logging in Stages
+
+1. Open System > Settings > Logging / Targets.
+2. Edit the existing remote target or add a new one.
+3. Target host = Debian or Ubuntu-side listener IP.
+4. Start with transport = UDP.
+5. Port = 514.
+6. Select only firewall logs first.
+7. Save and Apply.
+8. Wait 10 to 20 seconds.
+9. Generate a test firewall event from Kali.
+10. Confirm the packets arrive on Debian before enabling more categories.
+
+### 13.3 Add Suricata Logs After Firewall Logs Work
+
+1. Stay in System > Settings > Logging / Targets.
+2. Edit the same target.
+3. Add Intrusion Detection or Suricata category.
+4. Save and Apply.
+5. Re-run one Suricata-triggering test from Kali.
+6. Confirm Debian receives both firewall and IDS-related logs.
+
+### 13.4 Review Local OPNsense Logging Health
+
+1. Open System > Log Files > General.
+2. Check for repeated syslog forwarding errors.
+3. Open Services > Intrusion Detection > Administration.
+4. Confirm service is still running after enabling remote logging.
+5. If the firewall feels slow, avoid enabling unnecessary feeds on OPNsense and keep heavy analysis on Debian.
+
+### 13.5 Create a Restricted Automation User Only If Needed
+
+Do this only if you later automate OPNsense actions.
+
+1. Open System > Access > Users.
+2. Click Add.
+3. Username = dedicated automation name.
+4. Set a strong password.
+5. Grant only the minimum permissions required.
+6. Do not reuse the main admin account for scripts.
+7. Save.
+
+---
+
+## 14. Day 2 Optional Publishing Support
+
+### 14.1 Keep Exposure Minimal
+
+1. Do not port-forward Kali.
+2. Do not port-forward raw syslog, indexer, or database ports.
+3. If public access is needed later, expose only the reverse proxy or dashboard/API entry point.
+
+### 14.2 If You Must Add a Temporary Port Forward Later
+
+1. Open Firewall > NAT > Port Forward.
+2. Add only the exact destination host and exact destination port needed.
+3. Restrict source addresses if possible.
+4. Add a clear description.
+5. Save and Apply.
+6. Test from a controlled client only.
+7. Remove the rule when it is no longer required.
+
+---
+
+## Day 3 - OPNsense Final Validation, IPS Staging, and Evidence Capture
+
+## 15. Day 3 IPS and Final Hardening Steps
+
+### 15.1 Reconfirm Resource-Safe Settings
+
+Because OPNsense only has 2 GB RAM and 2 cores:
+
+1. Keep ET Open as the main Suricata source.
+2. Do not enable every available ruleset family.
+3. Avoid turning on extra app-detect feeds unless you have a specific test for them.
+4. Watch dashboard responsiveness and OPNsense web UI responsiveness after each change.
+
+### 15.2 Move from IDS to IPS Carefully
+
+1. Open Services > Intrusion Detection > Administration.
+2. Confirm IDS mode is working first.
+3. Enable IPS or inline mode.
+4. Save and Apply.
+5. Re-run only one or two known-trigger tests first.
+6. Check Alerts again.
+7. Check Firewall > Log Files > Live View for blocked or dropped traffic.
+8. If normal lab traffic breaks too broadly, disable IPS and reduce enabled categories.
+
+### 15.3 Final OPNsense Rule Review
+
+1. Open Firewall > Rules > OPT1.
+2. Confirm only the intended Kali-to-Ubuntu paths are passed.
+3. Open Firewall > Rules > LAN.
+4. Confirm Ubuntu-side allowances are still narrow.
+5. Open Firewall > NAT > Outbound.
+6. Confirm no unnecessary broad custom NAT rules were added during troubleshooting.
+
+### 15.4 Final DNS Review
+
+1. Open Services > Unbound DNS > General.
+2. Confirm Unbound is enabled only on required interfaces.
+3. Confirm client DNS rules still force Kali and Ubuntu to use the firewall.
+4. Re-test direct DNS to an outside resolver to verify it is still blocked.
+
+---
+
+## 16. Optional Internet Publishing Support
 
 Only do this after local dashboard/API works.
 
-### 12.1 NAT/Exposure Rule
+### 16.1 NAT/Exposure Rule
 
 1. Do not create direct forwards to Kali.
 2. If you must expose something through OPNsense later, expose only reverse proxy or controlled dashboard/API endpoints.
 3. Keep internal log/indexer ports private.
 
-### 12.2 API Access for Automation
+### 16.2 API Access for Automation
 
 If you plan to automate OPNsense later:
 
@@ -446,14 +585,14 @@ If you plan to automate OPNsense later:
 
 ---
 
-## 13. Backup and Evidence Collection
+## 17. Backup and Evidence Collection
 
-### 13.1 Export Configuration
+### 17.1 Export Configuration
 
 1. Open System > Configuration > Backups.
 2. Download a config backup after each stable milestone.
 
-### 13.2 Capture Evidence
+### 17.2 Capture Evidence
 
 Collect these:
 
@@ -463,10 +602,12 @@ Collect these:
 4. Screenshot of Suricata settings
 5. Screenshot of alerts page
 6. Screenshot of logging target
+7. Screenshot of remote log packets arriving on Debian
+8. Screenshot of final IPS mode setting if enabled
 
 ---
 
-## 14. Minimum OPNsense Success Checklist
+## 18. Minimum OPNsense Success Checklist
 
 You are done with the OPNsense side when all are true:
 
@@ -477,11 +618,13 @@ You are done with the OPNsense side when all are true:
 5. ET Open rules are downloaded.
 6. Suricata sees alerts for Kali-to-Ubuntu test traffic.
 7. Ubuntu receives OPNsense logs.
-8. Configuration backup is exported.
+8. Debian-side dashboard/log receiver sees forwarded OPNsense logs.
+9. IPS mode has been tested safely or deliberately left in IDS with reason noted.
+10. Configuration backup is exported.
 
 ---
 
-## 15. If Something Fails
+## 19. If Something Fails
 
 Use this order:
 
@@ -492,3 +635,8 @@ Use this order:
 5. Check Suricata service and HOME_NET.
 6. Check Ubuntu syslog listener.
 7. Re-test one change at a time.
+End of checklist.
+
+
+
+
