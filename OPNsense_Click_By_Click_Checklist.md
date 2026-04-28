@@ -388,7 +388,7 @@ curl -A "sqlmap/1.0" "http://192.168.50.10/"
 
 ### 10.2 Validate Firewall DNS
 
-1. Open System > Diagnostics > DNS Lookup.
+1. Open Interfaces > Diagnostics > DNS Lookup.
 2. Query `example.com`.
 3. Confirm resolution succeeds.
 

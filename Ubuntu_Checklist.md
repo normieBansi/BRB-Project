@@ -33,7 +33,7 @@ Expected: Ubuntu container is listed as Up.
 If not running:
 
 ```bash
-podman start ubuntu
+sudo podman run -d --name ubuntu-lab --replace  --cap-add=NET_RAW --cap-add=NET_BIND_SERVICE --network lan1 --ip 192.168.50.10 -v ./10-opnsense.conf:/etc/rsyslog.d/10-opnsense.conf:ro -v ./logs:/var/log ubuntu rsyslogd -n
 ```
 
 Replace `ubuntu` with your actual container name.
@@ -88,6 +88,16 @@ apt install -y \
   nano
 ```
 
+#### Also error "The apache2 configtest failed."
+```bash
+# Missing log directory
+mkdir -p /var/log/apache2
+chown -R www-data:www-data /var/log/apache2
+# ServerName warning (non-fatal)
+echo "ServerName 192.168.50.10" >> /etc/apache2/apache2.conf
+```
+as `/var/log` is a mounted volume → default Apache dirs absent
+
 ### 2.2 Verify Python Version
 
 ```bash
@@ -138,6 +148,8 @@ Ubuntu must receive logs from OPNsense before anything else in the SIEM pipeline
 
 ### 4.1 Create rsyslog Config for OPNsense
 
+run it inside bash only, not fish.
+
 ```bash
 cat > /etc/rsyslog.d/10-opnsense.conf << 'EOF'
 # OPNsense remote syslog receiver
@@ -159,8 +171,8 @@ Replace `192.168.50.1` with the actual OPNsense LAN IP if different.
 ### 4.2 Restart rsyslog
 
 ```bash
-service rsyslog restart
-service rsyslog status
+sudo podman restart ubuntu-lab
+ps aux | grep rsyslogd
 ```
 
 Expected: rsyslog is active and running.
@@ -178,6 +190,12 @@ Expected: UDP 514 and TCP 5514 appear as listening.
 ```bash
 touch /var/log/opnsense.log
 chmod 640 /var/log/opnsense.log
+```
+and immediately run
+```bash
+chown syslog:syslog /var/log/opnsense.log
+chmod 644 /var/log/opnsense.log
+rsyslogd -N1
 ```
 
 ---
@@ -213,6 +231,17 @@ Day 1 is done when:
 1. Apache serves HTTP responses.
 2. rsyslog listens on UDP 514 and TCP 5514.
 3. OPNsense log packets arrive and are written to /var/log/opnsense.log.
+
+#### Extra: Clean up log files
+```bash
+truncate -s 0 /var/log/opnsense.log
+# or
+: > /var/log/opnsense.log
+```
+incase issue arises
+```bash
+chown syslog:syslog /var/log/opnsense.log
+```
 
 ---
 
@@ -259,6 +288,9 @@ server:
   http_listen_port: 3100
 
 ingester:
+  wal:
+    enabled: true
+    dir: /loki/wal
   lifecycler:
     address: 127.0.0.1
     ring:
@@ -321,7 +353,7 @@ scrape_configs:
           - localhost
         labels:
           job: opnsense
-          __path__: /var/log/opnsense.log
+          __path__: /home/vbox/logs/opnsense.log
 EOF
 ```
 
@@ -345,10 +377,10 @@ services:
     restart: unless-stopped
 
   promtail:
-    image: grafana/promtail:2.9.0
+    image: docker.io/grafana/promtail:2.9.0
     volumes:
       - ./promtail-config.yaml:/etc/promtail/config.yml
-      - /var/log/opnsense.log:/var/log/opnsense.log:ro
+      - /home/vbox/logs/opnsense.log:/var/log/opnsense.log:ro
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
