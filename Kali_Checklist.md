@@ -13,6 +13,7 @@ Lab context:
 3. Gateway = 192.168.60.1 (OPNsense OPT1).
 4. Target = Ubuntu at 192.168.50.10.
 5. Commands prefixed with `[debian]` are run on the Debian host. All others are run inside the Kali container.
+6. Current architecture: Debian hosts the main dashboard and the control API at `http://<Debian-IP>:5000`.
 
 ---
 
@@ -33,7 +34,7 @@ Expected: a container for Kali is listed as Up.
 If not running, start it:
 
 ```bash
-podman start kali
+sudo podman run -it --name kali-lab --replace --cap-add=NET_RAW --cap-add=NET_ADMIN --security-opt seccomp=unconfined --network opt1 --ip 192.168.60.10 kalilinux/kali-rolling
 ```
 
 Replace `kali` with your actual container name if different.
@@ -41,10 +42,10 @@ Replace `kali` with your actual container name if different.
 ### 1.2 Get a Shell into Kali
 
 ```bash
-podman exec -it kali bash
+sudo podman exec -it kali-lab bash
 ```
 
-All following commands in this file are run from inside this shell unless marked `[debian]`.
+Replace `kali-lab` if your container name is different. All following commands in this file are run from inside this shell unless marked `[debian]`.
 
 ### 1.3 Verify IP and Gateway Inside Container
 
@@ -98,88 +99,38 @@ Why each tool is needed:
 8. tcpdump: local packet capture for verification.
 9. python3/pip: needed for scripted traffic generation and TRex support.
 
-### 2.3 Create Scenario Scripts Directory
+### 2.3 Copy Scenario Scripts from the Workspace
+
+The canonical scenario files are now in the workspace under `kali-scenarios/` and are copied into the Kali container from Debian.
+
+`[debian]`:
 
 ```bash
-mkdir -p /opt/lab/scenarios
-```
-
-### 2.4 Create tcp_syn_burst.sh
-
-```bash
-cat > /opt/lab/scenarios/tcp_syn_burst.sh << 'EOF'
-#!/bin/bash
-RUN_ID="${1:-no-run-id}"
-TARGET="192.168.50.10"
-echo "[run_id=$RUN_ID] TCP SYN burst starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-hping3 -S -p 80 --flood -c 500 "$TARGET" 2>/dev/null || \
-  nmap -sS -Pn -p 1-500 "$TARGET"
-echo "[run_id=$RUN_ID] TCP SYN burst done at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-EOF
-chmod +x /opt/lab/scenarios/tcp_syn_burst.sh
-```
-
-### 2.5 Create web_scan.sh
-
-```bash
-cat > /opt/lab/scenarios/web_scan.sh << 'EOF'
-#!/bin/bash
-RUN_ID="${1:-no-run-id}"
-TARGET="192.168.50.10"
-echo "[run_id=$RUN_ID] Web scan starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-nikto -h "http://$TARGET" -maxtime 60
-curl -s "http://$TARGET/?id=1'" -o /dev/null
-curl -s "http://$TARGET/../../../../etc/passwd" -o /dev/null
-curl -s -A "sqlmap/1.0" "http://$TARGET/" -o /dev/null
-curl -s "http://$TARGET/?q=UNION+SELECT+null,null--" -o /dev/null
-echo "[run_id=$RUN_ID] Web scan done at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-EOF
-chmod +x /opt/lab/scenarios/web_scan.sh
-```
-
-### 2.6 Create ssh_bruteforce_sim.sh
-
-```bash
-cat > /opt/lab/scenarios/ssh_bruteforce_sim.sh << 'EOF'
-#!/bin/bash
-RUN_ID="${1:-no-run-id}"
-TARGET="192.168.50.10"
-echo "[run_id=$RUN_ID] SSH brute force sim starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-for i in $(seq 1 25); do
-  ssh -o ConnectTimeout=2 -o BatchMode=yes -o StrictHostKeyChecking=no \
-      testuser@"$TARGET" 2>/dev/null || true
-  sleep 0.2
+sudo podman exec kali-lab mkdir -p /opt/lab/scenarios
+for file in ~/lab/kali-scenarios/*.sh; do
+  sudo podman cp "$file" kali-lab:/opt/lab/scenarios/
 done
-echo "[run_id=$RUN_ID] SSH brute force sim done at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-EOF
-chmod +x /opt/lab/scenarios/ssh_bruteforce_sim.sh
+sudo podman exec kali-lab chmod +x /opt/lab/scenarios/*.sh
 ```
 
-### 2.7 Create sql_injection_sim.sh
-
-```bash
-cat > /opt/lab/scenarios/sql_injection_sim.sh << 'EOF'
-#!/bin/bash
-RUN_ID="${1:-no-run-id}"
-TARGET="192.168.50.10"
-echo "[run_id=$RUN_ID] SQL injection sim starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-sqlmap -u "http://$TARGET/?id=1" --batch --level=1 --risk=1 \
-       --timeout=5 --retries=1 2>/dev/null || \
-  curl -s "http://$TARGET/?id=1+OR+1=1--" -o /dev/null
-curl -s "http://$TARGET/?search='; DROP TABLE users;--" -o /dev/null
-curl -s "http://$TARGET/?name=admin'--" -o /dev/null
-echo "[run_id=$RUN_ID] SQL injection sim done at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-EOF
-chmod +x /opt/lab/scenarios/sql_injection_sim.sh
-```
-
-### 2.8 Verify Scripts Exist
+### 2.4 Verify Scripts Exist
 
 ```bash
 ls -la /opt/lab/scenarios/
 ```
 
-Expected: four executable .sh files.
+Expected: executable scripts including:
+
+1. `tcp_syn_burst.sh`
+2. `web_scan.sh`
+3. `ssh_bruteforce_sim.sh`
+4. `sql_injection_sim.sh`
+5. `udp_flood.sh`
+6. `icmp_flood.sh`
+7. `fin_scan.sh`
+8. `slow_http.sh`
+
+Note: `ssh_bruteforce_sim.sh` now defaults to `SSH_USER=root`, which matches your current Ubuntu container usage.
 
 ---
 
@@ -231,7 +182,7 @@ nc -zv 192.168.50.10 80
 
 Expected: HTTP headers returned, port 80 connects.
 
-If this fails, go to Ubuntu checklist step 3 and start Apache first.
+If this fails, go to [Ubuntu Checklist](Ubuntu_Checklist.md) step 3 and start Apache first.
 
 ### 4.2 Run Scan-Style Traffic
 
@@ -280,25 +231,25 @@ Minimum: at least one alert must appear for Day 1 to be complete.
 
 ## 5. Use the FastAPI Control API
 
-Prerequisite: Ubuntu checklist Day 2 must be done. The control API must be running on Ubuntu at port 5000 or 8000.
+Prerequisite: the Debian control plane in the Ubuntu checklist section 7 must be done. The control API must be running on Debian at port 5000.
 
 ### 5.1 Test API Reachability
 
 ```bash
-curl -m 5 http://192.168.50.10:5000/docs
+curl -m 5 http://<Debian-IP>:5000/docs
 ```
 
-Expected: returns some JSON or HTML response. If it times out, check Ubuntu control API service.
+Expected: returns some JSON or HTML response. If it times out, check the Debian control API service.
 
 ### 5.2 Test Launch Endpoint
 
 Replace `your_token_here` with the API token from Ubuntu checklist.
 
 ```bash
-curl -X POST http://192.168.50.10:5000/launch \
+curl -X POST http://<Debian-IP>:5000/launch \
   -H "Content-Type: application/json" \
   -H "X-API-Token: your_token_here" \
-  -d '{"scenario":"tcp_syn_burst"}'
+  -d '{"scenario":"tcp_syn_burst","target_ip":"192.168.50.10"}'
 ```
 
 Expected: JSON response with `status: accepted` and a `run_id`.
@@ -308,25 +259,34 @@ Expected: JSON response with `status: accepted` and a `run_id`.
 Run one at a time and allow at least 60 seconds between each so events are clearly separated in logs.
 
 ```bash
-curl -X POST http://192.168.50.10:5000/launch \
+curl -X POST http://<Debian-IP>:5000/launch \
   -H "X-API-Token: your_token_here" \
   -H "Content-Type: application/json" \
-  -d '{"scenario":"web_scan"}'
+  -d '{"scenario":"web_scan","target_ip":"192.168.50.10"}'
 ```
 
 ```bash
-curl -X POST http://192.168.50.10:5000/launch \
+curl -X POST http://<Debian-IP>:5000/launch \
   -H "X-API-Token: your_token_here" \
   -H "Content-Type: application/json" \
-  -d '{"scenario":"ssh_bruteforce_sim"}'
+  -d '{"scenario":"ssh_bruteforce_sim","target_ip":"192.168.50.10"}'
 ```
 
 ```bash
-curl -X POST http://192.168.50.10:5000/launch \
+curl -X POST http://<Debian-IP>:5000/launch \
   -H "X-API-Token: your_token_here" \
   -H "Content-Type: application/json" \
-  -d '{"scenario":"sql_injection_sim"}'
+  -d '{"scenario":"sql_injection_sim","target_ip":"192.168.50.10"}'
 ```
+
+Additional scenarios exposed by the new API:
+
+1. `udp_flood`
+2. `icmp_flood`
+3. `fin_scan`
+4. `slow_http`
+
+The dashboard on Debian also exposes a kill switch for running attacks and progressive ban controls for attacker IPs.
 
 ### 5.4 Record run_id for Each Run
 

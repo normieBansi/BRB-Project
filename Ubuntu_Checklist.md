@@ -4,7 +4,7 @@
 
 ---
 
-This checklist covers everything done on or from the Ubuntu container: attack target services, log receiver, SIEM, ML pipeline, control API, and dashboard.
+This checklist covers everything done on or from the Ubuntu container and the Debian control plane: target services, log receiver, SIEM, ML pipeline, Debian-hosted control API, and the Debian-hosted dashboard.
 
 Lab context:
 
@@ -13,6 +13,7 @@ Lab context:
 3. Gateway = 192.168.50.1 (OPNsense LAN).
 4. Debian host has 4 vCPU, 4 GB RAM, 40 GB storage.
 5. Commands prefixed with `[debian]` are run on the Debian host. All others are inside the Ubuntu container.
+6. Current architecture: Debian is the control plane. Ubuntu is primarily the target, log receiver, and ML execution environment.
 
 ---
 
@@ -89,6 +90,7 @@ apt install -y \
 ```
 
 #### Also error "The apache2 configtest failed."
+
 ```bash
 # Missing log directory
 mkdir -p /var/log/apache2
@@ -96,6 +98,7 @@ chown -R www-data:www-data /var/log/apache2
 # ServerName warning (non-fatal)
 echo "ServerName 192.168.50.10" >> /etc/apache2/apache2.conf
 ```
+
 as `/var/log` is a mounted volume → default Apache dirs absent
 
 ### 2.2 Verify Python Version
@@ -233,12 +236,15 @@ Day 1 is done when:
 3. OPNsense log packets arrive and are written to /var/log/opnsense.log.
 
 #### Extra: Clean up log files
+
 ```bash
 truncate -s 0 /var/log/opnsense.log
 # or
 : > /var/log/opnsense.log
 ```
+
 incase issue arises
+
 ```bash
 chown syslog:syslog /var/log/opnsense.log
 ```
@@ -327,6 +333,10 @@ chunk_store_config:
 table_manager:
   retention_deletes_enabled: false
   retention_period: 0s
+
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
 EOF
 ```
 
@@ -353,9 +363,41 @@ scrape_configs:
           - localhost
         labels:
           job: opnsense
-          __path__: /home/vbox/logs/opnsense.log
+          __path__: /var/log/opnsense.log
 EOF
 ```
+<!--
+- **📌 Small Detour: what I broke — Promtail Path (Critical)**
+  - **Rule:** Use **container path**, not host path in `promtail-config.yaml`.
+  - **❌ Incorrect:** `__path__: /home/vbox/logs/opnsense.log`
+  - **✅ Correct:** `__path__: /var/log/opnsense.log`
+  - **Why:** Promtail runs inside the container. The host file `/home/vbox/logs/opnsense.log` is mounted to `/var/log/opnsense.log`, so only the container path is visible.
+  - **Symptom if wrong:** “No labels received” in Grafana; Promtail logs show the host path.
+  - **Fix:** `podman-compose down && podman-compose up -d`
+-->
+
+<div style="border: 1px solid var(--vscode-widget-border, #cbd5e1); background: var(--vscode-editor-background, #f8fafc); color: var(--vscode-editor-foreground, #0f172a); padding: 14px; border-radius: 8px; margin: 16px 0; font-family: inherit;">
+  <div style="font-weight: 600; margin-bottom: 8px;">📌 Small Detour: What I broke — Promtail Path (Critical)</div>
+  <div style="margin-bottom: 8px;"><strong>Rule:</strong> Use <strong>container path</strong>, not host path.</div>
+  <div style="margin-bottom: 4px;"><strong>❌ Incorrect</strong></div>
+  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>__path__: /home/vbox/logs/opnsense.log</code></pre>
+  <div style="margin: 8px 0 4px;"><strong>✅ Correct</strong></div>
+  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>__path__: /var/log/opnsense.log</code></pre>
+  <div style="margin: 8px 0 4px;"><strong>Why</strong></div>
+  <ul style="margin: 4px 0; padding-left: 20px;">
+    <li>Promtail runs inside a container</li>
+    <li>File is mounted: <code>/home/vbox/logs/opnsense.log</code> → <code>/var/log/opnsense.log</code></li>
+    <li>Only the container path is visible to Promtail</li>
+  </ul>
+  <div style="margin: 8px 0 4px;"><strong>Symptom if wrong</strong></div>
+  <ul style="margin: 4px 0; padding-left: 20px;">
+    <li>“No labels received” in Grafana</li>
+    <li>Promtail logs show host path instead of <code>/var/log/...</code></li>
+  </ul>
+  <div style="margin: 8px 0 4px;"><strong>Fix action</strong></div>
+  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>podman-compose down
+podman-compose up -d</code></pre>
+</div>
 
 ### 6.5 Create Docker Compose File
 
@@ -368,6 +410,7 @@ version: "3"
 services:
   loki:
     image: grafana/loki:2.9.0
+    user: "0:0"
     ports:
       - "3100:3100"
     volumes:
@@ -423,6 +466,16 @@ podman ps
 
 Expected: loki, promtail, and grafana containers are running.
 
+#### if Loki fails with permission errors
+
+```bash
+podman logs siem_loki_1
+# ctrl+C immediately, then check if its volume ownership issue, then proceed with this
+podman-compose down
+rm -rf ~/.local/share/containers/storage/volumes/<project>_loki_data
+podman-compose up -d
+```
+
 ### 6.7 Access Grafana
 
 Open in browser on your Windows host: `http://192.168.50.1:3000` or `http://<Debian-LAN-IP>:3000`.
@@ -451,210 +504,152 @@ Expected: connection successful.
 
 ---
 
-## 7. Deploy FastAPI Control API
+## 7. Deploy the Debian Control Plane
 
-### 7.1 Create Project Directory on Ubuntu
+The control API and the dashboard now live on Debian, not inside the Ubuntu container. Ubuntu stays the target, log receiver, and ML execution node.
 
-Inside Ubuntu container:
+### 7.1 Copy the Real Control API Files to Debian
+
+The canonical files are now in the workspace:
+
+1. `control-api/app.py`
+2. `control-api/requirements.txt`
+3. `kali-scenarios/*.sh`
+
+If you use a VirtualBox shared folder, copy them from the shared mount into Debian.
+
+`[debian]`:
 
 ```bash
-mkdir -p ~/lab/control-api
+mkdir -p ~/lab/control-api ~/lab/kali-scenarios
+cp /path/to/shared/test/control-api/app.py ~/lab/control-api/app.py
+cp /path/to/shared/test/control-api/requirements.txt ~/lab/control-api/requirements.txt
+cp /path/to/shared/test/kali-scenarios/*.sh ~/lab/kali-scenarios/
+chmod +x ~/lab/kali-scenarios/*.sh
+```
+
+If you do not use a shared folder, use `scp`, Git, or paste the files manually.
+
+### 7.2 Copy Scenario Files into the Kali Container
+
+`[debian]`:
+
+```bash
+sudo podman exec kali-lab mkdir -p /opt/lab/scenarios
+for file in ~/lab/kali-scenarios/*.sh; do
+  sudo podman cp "$file" kali-lab:/opt/lab/scenarios/
+done
+sudo podman exec kali-lab chmod +x /opt/lab/scenarios/*.sh
+sudo podman exec kali-lab ls -la /opt/lab/scenarios
+```
+
+Expected: the copied scripts include the original four plus the extended set such as `udp_flood.sh`, `icmp_flood.sh`, `fin_scan.sh`, and `slow_http.sh`.
+
+### 7.3 Allow the Debian API Process to Execute Podman Commands
+
+Because your Kali and Ubuntu containers are managed with `sudo podman`, the API user on Debian needs passwordless access for the exact Podman exec path used by the API.
+
+`[debian]`:
+
+```bash
+sudo visudo
+```
+
+Add a rule like this for your Debian user:
+
+```text
+vbox ALL=(root) NOPASSWD:/usr/bin/podman exec *
+```
+
+If your Podman binary lives elsewhere, correct the path with:
+
+```bash
+command -v podman
+```
+
+### 7.4 Create and Start the Debian Control API
+
+`[debian]`:
+
+```bash
 cd ~/lab/control-api
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install fastapi uvicorn[standard] pydantic
+pip install -r requirements.txt
 ```
 
-### 7.2 Create the Control API File
+Set the required runtime variables. This removes the old fallback-token confusion and makes the log path explicit.
+
+`[debian]`:
 
 ```bash
-cat > ~/lab/control-api/app.py << 'PYEOF'
-from fastapi import FastAPI, HTTPException, Header
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import subprocess
-import uuid
-import json
-import os
-from datetime import datetime, timezone
-
-app = FastAPI(title="NGFW Lab Control API")
-
-API_TOKEN = os.environ.get("API_TOKEN", "change_this_token_now")
-
-# Add CORS so the hosted dashboard can call this API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        "http://127.0.0.1",
-        "https://yourusername.github.io",  # Update with your GitHub Pages URL
-        "*",  # Remove this in production and list origins explicitly
-    ],
-    allow_methods=["GET", "POST"],
-    allow_headers=["X-API-Token", "Content-Type"],
-)
-
-ALLOWED_SCENARIOS = {
-    "tcp_syn_burst": ["/opt/lab/scenarios/tcp_syn_burst.sh"],
-    "web_scan": ["/opt/lab/scenarios/web_scan.sh"],
-    "ssh_bruteforce_sim": ["/opt/lab/scenarios/ssh_bruteforce_sim.sh"],
-    "sql_injection_sim": ["/opt/lab/scenarios/sql_injection_sim.sh"],
-}
-
-run_log = []  # In-memory run log, resets on restart
-
-
-class LaunchRequest(BaseModel):
-    scenario: str
-
-
-def require_auth(token: str):
-    if token != API_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-
-@app.post("/launch")
-def launch(req: LaunchRequest, x_api_token: str = Header(default="")):
-    require_auth(x_api_token)
-    if req.scenario not in ALLOWED_SCENARIOS:
-        raise HTTPException(status_code=400, detail="Scenario not allowed")
-    run_id = str(uuid.uuid4())
-    cmd = ALLOWED_SCENARIOS[req.scenario] + [run_id]
-    subprocess.Popen(cmd)
-    entry = {
-        "run_id": run_id,
-        "scenario": req.scenario,
-        "submitted_at": datetime.now(timezone.utc).isoformat(),
-        "status": "accepted",
-    }
-    run_log.insert(0, entry)
-    if len(run_log) > 100:
-        run_log.pop()
-    return entry
-
-
-@app.get("/runs")
-def get_runs(x_api_token: str = Header(default="")):
-    require_auth(x_api_token)
-    return {"runs": run_log[:20]}
-
-
-@app.get("/telemetry/events")
-def get_events(limit: int = 20, x_api_token: str = Header(default="")):
-    require_auth(x_api_token)
-    events = []
-    log_path = "/var/log/opnsense.log"
-    try:
-        with open(log_path, "r") as f:
-            lines = f.readlines()
-        for line in reversed(lines):
-            line = line.strip()
-            if not line:
-                continue
-            events.append({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "raw": line[:300],
-                "src_ip": "192.168.60.10",
-                "dst_ip": "192.168.50.10",
-                "dst_port": 80,
-                "proto": "TCP",
-                "action": "alert",
-                "signature": line[:80] if len(line) > 0 else "firewall_event",
-                "severity": "medium",
-            })
-            if len(events) >= limit:
-                break
-    except FileNotFoundError:
-        pass
-    return {"events": events}
-
-
-@app.get("/telemetry/summary")
-def get_summary(x_api_token: str = Header(default="")):
-    require_auth(x_api_token)
-    # Stub: replace with real log parsing as needed
-    return {
-        "total_alerts": len(run_log) * 12,
-        "blocked": len(run_log) * 3,
-        "high_sev": len(run_log) * 4,
-        "medium_sev": len(run_log) * 5,
-        "low_sev": len(run_log) * 3,
-        "anomalies": len(run_log) * 2,
-        "active_flows": 0,
-        "over_time": [],
-        "top_sources": [{"ip": "192.168.60.10", "count": len(run_log) * 10}],
-        "top_ports": [
-            {"port": 80, "count": len(run_log) * 5},
-            {"port": 22, "count": len(run_log) * 3},
-        ],
-    }
-
-
-@app.get("/ml/summary")
-def get_ml_summary(x_api_token: str = Header(default="")):
-    require_auth(x_api_token)
-    ml_path = os.path.expanduser("~/lab/ml/latest_results.json")
-    try:
-        with open(ml_path) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {
-            "total_scored": 0,
-            "anomaly_pct": "0.0",
-            "top_class": "none",
-            "distribution": {},
-            "trend": [],
-        }
-
-
-@app.get("/ml/predictions")
-def get_ml_predictions(limit: int = 15, x_api_token: str = Header(default="")):
-    require_auth(x_api_token)
-    pred_path = os.path.expanduser("~/lab/ml/predictions.json")
-    try:
-        with open(pred_path) as f:
-            data = json.load(f)
-            return {"predictions": data[:limit]}
-    except FileNotFoundError:
-        return {"predictions": []}
-PYEOF
+export TOKEN='replace_with_a_long_random_token'
+export API_TOKEN="$TOKEN"
+export KALI_CONTAINER='kali-lab'
+export SSH_USER='root'
+export TARGET_DEFAULT='192.168.50.10'
+export OPNSENSE_LOG_PATH="$HOME/logs/opnsense.log"
+export CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1'
+uvicorn app:app --host 0.0.0.0 --port 5000
 ```
 
-### 7.3 Start the Control API
+Test it locally from a second terminal before backgrounding it:
 
-```bash
-cd ~/lab/control-api
-source .venv/bin/activate
-API_TOKEN=your_strong_token_here uvicorn app:app --host 0.0.0.0 --port 5000
-```
-
-Replace `your_strong_token_here` with an actual token. Use at least 20 random characters.
-
-Test it locally first:
+`[debian]`:
 
 ```bash
 curl http://127.0.0.1:5000/runs \
-  -H "X-API-Token: your_strong_token_here"
+  -H "X-API-Token: $TOKEN"
 ```
 
 Expected: `{"runs": []}`.
 
-### 7.4 Run the API as a Background Service
+### 7.5 Run the API in the Background Without Losing the Token
+
+Do not start a second `uvicorn` process without the environment variables. That was the source of the earlier token confusion.
+
+`[debian]`:
 
 ```bash
-nohup uvicorn app:app --host 0.0.0.0 --port 5000 &> ~/lab/control-api/api.log &
+pkill -f "uvicorn app:app" || true
+cd ~/lab/control-api
+source .venv/bin/activate
+nohup env \
+  API_TOKEN="$TOKEN" \
+  KALI_CONTAINER="$KALI_CONTAINER" \
+  SSH_USER="$SSH_USER" \
+  TARGET_DEFAULT="$TARGET_DEFAULT" \
+  OPNSENSE_LOG_PATH="$OPNSENSE_LOG_PATH" \
+  CORS_ALLOWED_ORIGINS="$CORS_ALLOWED_ORIGINS" \
+  uvicorn app:app --host 0.0.0.0 --port 5000 > ~/lab/control-api/api.log 2>&1 &
 echo $! > ~/lab/control-api/api.pid
 ```
 
 To stop it later:
 
+`[debian]`:
+
 ```bash
 kill $(cat ~/lab/control-api/api.pid)
 ```
 
-### 7.5 Place Dashboard HTML
+### 7.6 Optional Firewall Hooks for Progressive Bans
+
+The new API supports `/firewall/ban`, `/firewall/unban`, and automatic expiry. To make those buttons actually change OPNsense, wire the API to either an OPNsense API call or an SSH helper script.
+
+Example pattern:
+
+`[debian]`:
+
+```bash
+export FIREWALL_BAN_CMD='echo add $BAN_IP to OPNsense alias here'
+export FIREWALL_UNBAN_CMD='echo remove $BAN_IP from OPNsense alias here'
+```
+
+Until you replace those placeholders with a real OPNsense integration, the dashboard still tracks bans in record-only mode.
+
+### 7.7 Place Dashboard HTML
 
 Copy `dashboard/index.html` from your Windows host into the Ubuntu container or serve it from Debian.
 
@@ -701,12 +696,14 @@ Open `http://<Debian-IP>:8888` on your Windows host.
 
 ### 8.3 Test in Live Mode
 
-1. Enter API Base URL = `http://192.168.50.10:5000`.
+1. Enter API Base URL = `http://<Debian-IP>:5000`.
 2. Enter API Token = the token you set.
 3. Turn off Mock Mode.
 4. Click Attack Control tab.
-5. Select a scenario and click Launch.
+5. Select a scenario, set target IP if needed, and click Launch.
 6. Expected: run appears in the Recent Runs table with status accepted.
+7. Use Stop Selected to verify the kill switch.
+8. Use the firewall controls to test 1 hour, 5 hour, 10 hour, and 24 hour progressive bans.
 
 ---
 
@@ -725,6 +722,15 @@ pip install --upgrade pip
 pip install pandas numpy scikit-learn matplotlib seaborn joblib pyarrow
 ```
 
+Prefer using the canonical workspace files under `ml/` now:
+
+1. `ml/parse_logs.py`
+2. `ml/train.py`
+3. `ml/infer.py`
+4. `ml/requirements.txt`
+
+Copy them to Debian or Ubuntu the same way you copied the control API files.
+
 ### 9.2 Verify Installs
 
 ```bash
@@ -739,51 +745,11 @@ Expected: version number printed.
 
 ### 10.1 Export OPNsense Log to CSV for Training
 
-```bash
-cat > ~/lab/ml/parse_logs.py << 'PYEOF'
-import re
-import csv
-import sys
-from datetime import datetime
-
-LOG_PATH = "/var/log/opnsense.log"
-OUT_PATH = "/root/lab/ml/features.csv"
-
-FIELDS = ["timestamp", "src_ip", "dst_ip", "dst_port", "proto",
-          "action", "signature", "severity", "label"]
-
-rows = []
-with open(LOG_PATH) as f:
-    for line in f:
-        line = line.strip()
-        if not line:
-            continue
-        # Very basic extraction - adapt regex to your actual log format
-        row = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "src_ip": "192.168.60.10",
-            "dst_ip": "192.168.50.10",
-            "dst_port": 80,
-            "proto": "TCP",
-            "action": "alert" if "block" not in line.lower() else "block",
-            "signature": line[:100],
-            "severity": "medium",
-            "label": "unknown",
-        }
-        rows.append(row)
-
-with open(OUT_PATH, "w", newline="") as out:
-    writer = csv.DictWriter(out, fieldnames=FIELDS)
-    writer.writeheader()
-    writer.writerows(rows)
-
-print(f"Wrote {len(rows)} rows to {OUT_PATH}")
-PYEOF
-```
+The older inline parser hardcoded source and destination IPs. Use the standalone `ml/parse_logs.py` file instead, because it extracts IPs, ports, protocol, and action dynamically from the log lines.
 
 ```bash
 source .venv/bin/activate
-python3 ~/lab/ml/parse_logs.py
+python3 ~/lab/ml/parse_logs.py --log ~/logs/opnsense.log --out ~/lab/ml/features.csv
 ```
 
 ### 10.2 Manually Label Rows Using run_id Log
@@ -802,94 +768,7 @@ Use the run_id timestamps from the Kali run log to identify attack windows.
 
 ### 11.1 Create and Run Training Script
 
-```bash
-cat > ~/lab/ml/train.py << 'PYEOF'
-import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.ensemble import IsolationForest, RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-import joblib
-import json
-
-df = pd.read_csv("/root/lab/ml/features.csv")
-
-# Feature columns
-cat_cols = ["proto", "action", "signature"]
-num_cols = ["dst_port", "severity"]
-
-# Encode severity to numeric if needed
-severity_map = {"high": 1, "medium": 2, "low": 3, "unknown": 2}
-df["severity"] = df["severity"].map(severity_map).fillna(2)
-
-feature_cols = cat_cols + num_cols
-X = df[feature_cols].copy()
-
-pre = ColumnTransformer(transformers=[
-    ("num", Pipeline([
-        ("imp", SimpleImputer(strategy="median")),
-        ("sc", StandardScaler()),
-    ]), num_cols),
-    ("cat", Pipeline([
-        ("imp", SimpleImputer(strategy="most_frequent")),
-        ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
-    ]), cat_cols),
-])
-
-X_pre = pre.fit_transform(X)
-
-# Isolation Forest (unsupervised anomaly detection)
-iso = IsolationForest(n_estimators=200, contamination=0.05, random_state=42)
-iso.fit(X_pre)
-df["anomaly_flag"] = iso.predict(X_pre)
-df["anomaly_score"] = iso.decision_function(X_pre)
-
-joblib.dump(pre, "/root/lab/ml/preprocessor.joblib")
-joblib.dump(iso, "/root/lab/ml/isolation_forest.joblib")
-print("Isolation Forest trained and saved.")
-
-# Random Forest (supervised classification, if labels available)
-if "label" in df.columns and df["label"].nunique() > 1 and \
-   not (df["label"] == "unknown").all():
-    df_labeled = df[df["label"] != "unknown"].copy()
-    y = df_labeled["label"]
-    X_labeled = df_labeled[feature_cols]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_labeled, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    clf = Pipeline([
-        ("pre", pre),
-        ("rf", RandomForestClassifier(
-            n_estimators=300, max_depth=16,
-            class_weight="balanced", random_state=42, n_jobs=-1,
-        )),
-    ])
-    clf.fit(X_train, y_train)
-    pred = clf.predict(X_test)
-    print(classification_report(y_test, pred))
-    joblib.dump(clf, "/root/lab/ml/random_forest_pipeline.joblib")
-    print("Random Forest trained and saved.")
-else:
-    print("Skipping Random Forest: no labeled data or only one class.")
-
-# Write latest results for API
-results = {
-    "total_scored": len(df),
-    "anomaly_pct": str(round((df["anomaly_flag"] == -1).mean() * 100, 1)),
-    "top_class": "benign",
-    "distribution": dict(df["label"].value_counts()),
-    "trend": [],
-}
-with open("/root/lab/ml/latest_results.json", "w") as f:
-    json.dump(results, f)
-print("Results written to latest_results.json")
-PYEOF
-```
+Use the standalone `ml/train.py` file from the workspace. It no longer assumes a single attacker IP and includes `src_ip` and `dst_ip` as categorical features.
 
 ```bash
 source .venv/bin/activate
@@ -902,61 +781,7 @@ python3 ~/lab/ml/train.py
 
 ### 12.1 Create Inference Script
 
-```bash
-cat > ~/lab/ml/infer.py << 'PYEOF'
-import pandas as pd
-import joblib
-import json
-from datetime import datetime, timezone
-
-pre = joblib.load("/root/lab/ml/preprocessor.joblib")
-iso = joblib.load("/root/lab/ml/isolation_forest.joblib")
-
-try:
-    clf = joblib.load("/root/lab/ml/random_forest_pipeline.joblib")
-    has_clf = True
-except FileNotFoundError:
-    has_clf = False
-
-df = pd.read_csv("/root/lab/ml/features.csv")
-
-cat_cols = ["proto", "action", "signature"]
-num_cols = ["dst_port", "severity"]
-severity_map = {"high": 1, "medium": 2, "low": 3, "unknown": 2}
-df["severity"] = df["severity"].map(severity_map).fillna(2)
-
-X = df[cat_cols + num_cols].copy()
-X_pre = pre.transform(X)
-
-df["anomaly_flag"] = iso.predict(X_pre)
-df["anomaly_score"] = iso.decision_function(X_pre)
-
-if has_clf:
-    df["predicted_class"] = clf.predict(X)
-    proba = clf.predict_proba(X)
-    df["confidence"] = proba.max(axis=1)
-else:
-    df["predicted_class"] = "unknown"
-    df["confidence"] = 0.0
-
-preds = []
-for _, row in df.tail(50).iterrows():
-    preds.append({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "src_ip": str(row.get("src_ip", "unknown")),
-        "dst_port": int(row["dst_port"]),
-        "anomaly_score": round(float(row["anomaly_score"]), 4),
-        "anomaly_flag": int(row["anomaly_flag"]),
-        "predicted_class": str(row["predicted_class"]),
-        "confidence": round(float(row["confidence"]), 4),
-    })
-
-with open("/root/lab/ml/predictions.json", "w") as f:
-    json.dump(list(reversed(preds)), f)
-
-print(f"Inference done. {len(preds)} predictions written.")
-PYEOF
-```
+Use the standalone `ml/infer.py` file from the workspace. It preserves the parsed source and destination IPs instead of replacing them with fixed values.
 
 ```bash
 source .venv/bin/activate
@@ -990,8 +815,14 @@ Expected: real prediction data loads instead of mock data.
 kill $(cat ~/lab/control-api/api.pid) 2>/dev/null || true
 cd ~/lab/control-api
 source .venv/bin/activate
-nohup API_TOKEN=your_strong_token_here \
-  uvicorn app:app --host 0.0.0.0 --port 5000 &> api.log &
+nohup env \
+  API_TOKEN="$TOKEN" \
+  KALI_CONTAINER="$KALI_CONTAINER" \
+  SSH_USER="$SSH_USER" \
+  TARGET_DEFAULT="$TARGET_DEFAULT" \
+  OPNSENSE_LOG_PATH="$OPNSENSE_LOG_PATH" \
+  CORS_ALLOWED_ORIGINS="$CORS_ALLOWED_ORIGINS" \
+  uvicorn app:app --host 0.0.0.0 --port 5000 > api.log 2>&1 &
 echo $! > api.pid
 ```
 
@@ -1000,10 +831,10 @@ echo $! > api.pid
 From Kali:
 
 ```bash
-curl -X POST http://192.168.50.10:5000/launch \
-  -H "X-API-Token: your_strong_token_here" \
+curl -X POST http://<Debian-IP>:5000/launch \
+  -H "X-API-Token: $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"scenario":"web_scan"}'
+  -d '{"scenario":"web_scan","target_ip":"192.168.50.10"}'
 ```
 
 While it runs:
@@ -1028,8 +859,8 @@ This section covers publishing the static dashboard HTML file so it can be acces
 wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
 sudo dpkg -i cloudflared-linux-amd64.deb
 
-# Start a quick tunnel to the control API on Ubuntu (port 5000)
-cloudflared tunnel --url http://192.168.50.10:5000
+# Start a quick tunnel to the control API on Debian (port 5000)
+cloudflared tunnel --url http://127.0.0.1:5000
 ```
 
 The command prints a public URL like `https://random-words.trycloudflare.com`.
@@ -1106,3 +937,52 @@ You are done when all are true:
 10. Predictions are written to predictions.json.
 11. Dashboard shows real data in live mode.
 12. Migration path to GitHub Pages or Netlify is tested.
+
+---
+---
+
+## Appendix
+
+### Appendix 1
+
+<div style="border: 1px solid var(--vscode-widget-border, #cbd5e1); background: var(--vscode-editor-background, #f8fafc); color: var(--vscode-editor-foreground, #0f172a); padding: 14px; border-radius: 8px; margin: 16px 0; font-family: inherit;">
+  <div style="font-weight: 600; margin-bottom: 8px;">📌 Small Detour: The "Quote Trap" — Shell vs. Python Syntax</div>
+  <div style="margin-bottom: 8px;"><strong>Context:</strong> When writing Python files from Fish/Bash using <code>bash -c</code>, you are nesting three layers of syntax: <strong>Fish → Bash → Python</strong>. Mismanaging quotes causes silent failures or syntax errors.</div>
+  
+  <div style="margin: 12px 0 4px;"><strong>1. The Golden Rule: Use Double Quotes for the Outer Wrapper</strong></div>
+  <div style="margin-bottom: 4px;">Wrap your entire <code>bash -c</code> command in double quotes (<code>"..."</code>). This allows single quotes (<code>'</code>) to exist freely inside your Python code without escaping.</div>
+  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>bash -c "cat > app.py << 'PYEOF'
+# Single quotes are safe here!
+msg = 'Hello World'
+print(msg)
+PYEOF"</code></pre>
+
+  <div style="margin: 12px 0 4px;"><strong>2. Handling Double Quotes in Python</strong></div>
+  <div style="margin-bottom: 4px;">If your Python code requires double quotes (e.g., <code>print("Hi")</code>), you must escape them with a backslash (<code>\</code>) because the outer shell wrapper is using double quotes.</div>
+  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>bash -c "cat > app.py << 'PYEOF'
+# Escape internal double quotes
+print(\"It works!\")
+PYEOF"</code></pre>
+
+  <div style="margin: 12px 0 4px;"><strong>3. The "Quote Sandwich" (Advanced/POSIX Standard)</strong></div>
+  <div style="margin-bottom: 4px;">If you must use single quotes for the outer wrapper, you cannot simply use <code>\'</code> inside. You must use the <code>'\''</code> sequence to "pause" quoting, insert a literal quote, and resume.</div>
+  <ul style="margin: 4px 0; padding-left: 20px;">
+    <li><code>'</code> : End current single-quoted string.</li>
+    <li><code>\'</code> : Insert a literal single quote.</li>
+    <li><code>'</code> : Start new single-quoted string.</li>
+  </ul>
+  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code># Complex but 100% reliable
+bash -c 'echo '\''It'\''s working'\'''</code></pre>
+
+  <div style="margin: 12px 0 4px;"><strong>❌ Common Pitfall: The "Simple" Backslash</strong></div>
+  <div style="margin-bottom: 4px;">Using <code>\'</code> inside a single-quoted <code>bash -c</code> string is unreliable in Fish/Bash. It may work for simple words but fails when quotes are nested or used as delimiters (like in Heredocs).</div>
+  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code># ⚠️ Risky: May break if internal quotes exist
+bash -c 'cat > app.py << \'PYEOF\' ... PYEOF'</code></pre>
+
+  <div style="margin: 12px 0 4px;"><strong>💡 Recommendation</strong></div>
+  <ul style="margin: 4px 0; padding-left: 20px;">
+    <li><strong>For small snippets:</strong> Use <code>bash -c "..."</code> (Double Quote Wrapper).</li>
+    <li><strong>For complex files:</strong> Use <code>nano app.py</code> or <code>vim app.py</code> to avoid shell quoting entirely.</li>
+    <li><strong>For automation scripts:</strong> Use the <code>'\''</code> method for maximum POSIX compatibility.</li>
+  </ul>
+</div>

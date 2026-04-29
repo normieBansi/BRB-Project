@@ -229,6 +229,30 @@
       border-radius: 8px; padding: 1.1rem;
     }
     .run-log-box h3 { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.9rem; }
+    .stack { display: grid; gap: 0.75rem; }
+    .field-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.25rem; display: block; }
+    .text-input {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 0.45rem 0.65rem; border-radius: 4px;
+      font-size: 0.88rem; font-family: inherit;
+    }
+    .control-row { display: flex; gap: 0.55rem; flex-wrap: wrap; }
+    .btn-stop, .btn-ban, .btn-unban {
+      flex: 1; min-width: 110px; border: none; color: #fff; padding: 0.6rem;
+      border-radius: 5px; font-size: 0.86rem; font-weight: 700; cursor: pointer; font-family: inherit;
+      transition: opacity 0.2s;
+    }
+    .btn-stop { background: var(--red); }
+    .btn-ban { background: var(--yellow); color: #111; }
+    .btn-unban { background: var(--green); }
+    .btn-stop:hover, .btn-ban:hover, .btn-unban:hover { opacity: 0.85; }
+    .btn-stop:disabled, .btn-ban:disabled, .btn-unban:disabled { opacity: 0.35; cursor: not-allowed; }
+    .meta-box {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+      padding: 0.65rem; font-size: 0.75rem; color: var(--muted); min-height: 52px; white-space: pre-wrap;
+    }
+    .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+    @media (max-width: 950px) { .panel-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -274,15 +298,29 @@
 
       <div class="launch-box">
         <h3>Launch Scenario</h3>
+        <div class="stack">
+          <div>
+            <label class="field-label" for="target-ip">Target IP</label>
+            <input class="text-input" id="target-ip" value="192.168.50.10" placeholder="192.168.50.10">
+          </div>
         <select id="scenario-select">
           <option value="tcp_syn_burst">TCP SYN Burst</option>
           <option value="web_scan">Web Scan</option>
           <option value="ssh_bruteforce_sim">SSH Brute Force Simulation</option>
           <option value="sql_injection_sim">SQL Injection Simulation</option>
+          <option value="udp_flood">UDP Flood</option>
+          <option value="icmp_flood">ICMP Flood</option>
+          <option value="fin_scan">FIN Scan</option>
+          <option value="slow_http">Slow HTTP</option>
         </select>
         <div class="scen-desc" id="scen-desc"></div>
-        <button class="btn-launch" id="btn-launch">&#9654;&nbsp; Launch</button>
+        <div class="control-row">
+          <button class="btn-launch" id="btn-launch">&#9654;&nbsp; Launch</button>
+          <button class="btn-stop" id="btn-stop" disabled>Stop Selected</button>
+        </div>
+        </div>
         <div class="launch-out" id="launch-out">Ready. Select a scenario and click Launch.</div>
+        <div class="meta-box" id="selected-run-box">No run selected.</div>
       </div>
 
       <div class="run-log-box">
@@ -295,6 +333,7 @@
                 <th>Scenario</th>
                 <th>Run ID</th>
                 <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody id="run-log-body"></tbody>
@@ -302,6 +341,48 @@
         </div>
       </div>
 
+    </div>
+
+    <div class="panel-grid">
+      <div class="panel">
+        <div class="panel-title">Firewall Controls</div>
+        <div class="stack">
+          <div>
+            <label class="field-label" for="ban-ip">Offender IP</label>
+            <input class="text-input" id="ban-ip" value="192.168.60.10" placeholder="192.168.60.10">
+          </div>
+          <div>
+            <label class="field-label" for="ban-duration">Ban Duration</label>
+            <select id="ban-duration">
+              <option value="60">1 hour</option>
+              <option value="300">5 hours</option>
+              <option value="600">10 hours</option>
+              <option value="1440">24 hours</option>
+            </select>
+          </div>
+          <div class="control-row">
+            <button class="btn-ban" id="btn-ban">Apply Ban</button>
+            <button class="btn-unban" id="btn-unban">Release Ban</button>
+          </div>
+          <div class="meta-box" id="firewall-status-box">Firewall hook status unknown.</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Active Ban List</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th>Duration</th>
+                <th>Expires</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="ban-log-body"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -403,11 +484,16 @@ const SCEN_DESCS = {
   web_scan:            'Runs Nikto probes and curl-based injection strings against the HTTP target.',
   ssh_bruteforce_sim:  'Issues 25 SSH login attempts in quick succession to simulate a brute force.',
   sql_injection_sim:   'Sends SQLi payloads via HTTP to trigger SQL injection IDS signatures.',
+  udp_flood:           'Sends a short UDP burst for L4 volumetric testing and rate-limit checks.',
+  icmp_flood:          'Sends ICMP burst traffic to exercise L3 controls and telemetry visibility.',
+  fin_scan:            'Runs a FIN scan to extend transport-layer reconnaissance coverage.',
+  slow_http:           'Opens slow HTTP connections to test low-rate application DoS handling.',
 };
 
 let charts = {};
 let runLog = [];
 let autoRefId = null;
+let selectedRunId = null;
 
 // ───────────────────────────────────────────────────────────
 //  Helpers
@@ -415,6 +501,8 @@ let autoRefId = null;
 function apiBase() { return (document.getElementById('api-url').value || '').replace(/\/$/, ''); }
 function apiToken() { return document.getElementById('api-token').value || ''; }
 function isMock()  { return document.getElementById('mock-toggle').checked; }
+function targetIp() { return document.getElementById('target-ip').value || '192.168.50.10'; }
+function banIp() { return document.getElementById('ban-ip').value || ''; }
 
 function fmtTime(isoStr) {
   try { return new Date(isoStr).toLocaleTimeString(); } catch { return isoStr; }
@@ -435,6 +523,15 @@ function badge(text, cls) {
   sp.className = 'badge ' + cls;
   sp.textContent = String(text);
   return sp;
+}
+
+function setSelectedRun(runId, scenario) {
+  selectedRunId = runId;
+  const stopBtn = document.getElementById('btn-stop');
+  stopBtn.disabled = !runId;
+  document.getElementById('selected-run-box').textContent = runId
+    ? `Selected run: ${runId}\nScenario: ${scenario || 'unknown'}`
+    : 'No run selected.';
 }
 
 function severityBadge(s) {
@@ -481,6 +578,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'control')   refreshControlState();
     if (btn.dataset.tab === 'telemetry') refreshTelemetry();
     if (btn.dataset.tab === 'ml')        refreshML();
   });
@@ -524,8 +622,9 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
     const run_id = 'mock-' + Math.random().toString(36).slice(2, 10);
     const entry  = { ts: new Date().toLocaleTimeString(), scenario, run_id, status: 'accepted' };
     runLog.unshift(entry);
+    setSelectedRun(run_id, scenario);
     renderRunLog();
-    outEl.textContent = JSON.stringify({ status: 'accepted (mock)', scenario, run_id }, null, 2);
+    outEl.textContent = JSON.stringify({ status: 'accepted (mock)', scenario, run_id, target_ip: targetIp() }, null, 2);
     btn.disabled = false;
     return;
   }
@@ -533,15 +632,81 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
   try {
     const data = await apiFetch('/launch', {
       method: 'POST',
-      body: JSON.stringify({ scenario }),
+      body: JSON.stringify({ scenario, target_ip: targetIp(), source_hint: banIp() || 'kali-container' }),
     });
     runLog.unshift({ ts: new Date().toLocaleTimeString(), scenario, run_id: data.run_id, status: data.status });
+    setSelectedRun(data.run_id, scenario);
     renderRunLog();
     outEl.textContent = JSON.stringify(data, null, 2);
   } catch (err) {
     outEl.textContent = 'Error: ' + err.message;
   } finally {
     btn.disabled = false;
+  }
+});
+
+document.getElementById('btn-stop').addEventListener('click', async () => {
+  const outEl = document.getElementById('launch-out');
+  if (!selectedRunId) return;
+  if (isMock()) {
+    const row = runLog.find(item => item.run_id === selectedRunId);
+    if (row) row.status = 'stopped';
+    renderRunLog();
+    outEl.textContent = JSON.stringify({ run_id: selectedRunId, status: 'stopped (mock)' }, null, 2);
+    return;
+  }
+  try {
+    const data = await apiFetch(`/runs/${selectedRunId}/stop`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'dashboard_kill_switch' }),
+    });
+    const row = runLog.find(item => item.run_id === selectedRunId);
+    if (row) row.status = data.status || 'stopped';
+    renderRunLog();
+    outEl.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    outEl.textContent = 'Error: ' + err.message;
+  }
+});
+
+document.getElementById('btn-ban').addEventListener('click', async () => {
+  const box = document.getElementById('firewall-status-box');
+  const ipAddress = banIp();
+  const duration = Number(document.getElementById('ban-duration').value || '60');
+  if (!ipAddress) return;
+  if (isMock()) {
+    box.textContent = `Mock ban applied for ${ipAddress} (${duration} min).`;
+    return;
+  }
+  try {
+    const data = await apiFetch('/firewall/ban', {
+      method: 'POST',
+      body: JSON.stringify({ ip: ipAddress, duration_minutes: duration, reason: 'progressive_dashboard_block' }),
+    });
+    box.textContent = JSON.stringify(data, null, 2);
+    refreshControlState();
+  } catch (err) {
+    box.textContent = 'Error: ' + err.message;
+  }
+});
+
+document.getElementById('btn-unban').addEventListener('click', async () => {
+  const box = document.getElementById('firewall-status-box');
+  const ipAddress = banIp();
+  if (!ipAddress) return;
+  if (isMock()) {
+    box.textContent = `Mock unban applied for ${ipAddress}.`;
+    return;
+  }
+  try {
+    const data = await apiFetch('/firewall/unban', {
+      method: 'POST',
+      body: JSON.stringify({ ip: ipAddress, reason: 'dashboard_release' }),
+    });
+    box.textContent = JSON.stringify(data, null, 2);
+    refreshControlState();
+  } catch (err) {
+    box.textContent = 'Error: ' + err.message;
   }
 });
 
@@ -557,8 +722,59 @@ function renderRunLog() {
     const tdStatus = document.createElement('td');
     tdStatus.appendChild(badge(e.status, 'b-info'));
     tr.appendChild(tdStatus);
+    const tdAction = document.createElement('td');
+    const stopBtn = document.createElement('button');
+    stopBtn.className = 'btn-sm';
+    stopBtn.textContent = 'Select';
+    stopBtn.addEventListener('click', () => setSelectedRun(e.run_id, e.scenario));
+    tdAction.appendChild(stopBtn);
+    tbody.appendChild(tr);
+    tr.appendChild(tdAction);
+  });
+}
+
+function renderBanLog(rows) {
+  const tbody = document.getElementById('ban-log-body');
+  tbody.innerHTML = '';
+  rows.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.append(
+      td(item.ip),
+      td(item.duration_minutes + ' min'),
+      td(fmtTime(item.expires_at)),
+    );
+    const tdStatus = document.createElement('td');
+    tdStatus.appendChild(badge(item.status.toUpperCase(), item.status === 'active' ? 'b-block' : 'b-pass'));
+    tr.appendChild(tdStatus);
     tbody.appendChild(tr);
   });
+}
+
+async function refreshControlState() {
+  const box = document.getElementById('firewall-status-box');
+  if (isMock()) {
+    renderBanLog([{ ip: '192.168.60.10', duration_minutes: 60, expires_at: new Date(Date.now() + 3600_000).toISOString(), status: 'active' }]);
+    box.textContent = 'Mock mode: firewall hooks are simulated.';
+    return;
+  }
+  try {
+    const [status, bans, runs] = await Promise.all([
+      apiFetch('/firewall/status'),
+      apiFetch('/firewall/bans').then(r => r.bans || []),
+      apiFetch('/runs').then(r => r.runs || []),
+    ]);
+    runLog = runs.map(item => ({
+      ts: fmtTime(item.submitted_at),
+      scenario: item.scenario,
+      run_id: item.run_id,
+      status: item.status,
+    }));
+    renderRunLog();
+    renderBanLog(bans);
+    box.textContent = `Ban hook enabled: ${status.ban_hook_enabled}\nUnban hook enabled: ${status.unban_hook_enabled}\nActive bans: ${status.active_bans}`;
+  } catch (err) {
+    box.textContent = 'Error: ' + err.message;
+  }
 }
 
 // ───────────────────────────────────────────────────────────
@@ -571,10 +787,11 @@ function mockEvents(n = 20) {
     'ET EXPLOIT RCE Attempt', 'ET SCAN Aggressive Scan',
     'ET WEB_SERVER Directory Traversal', 'ET SCAN Port Sweep',
   ];
+  const sourcePool = ['192.168.60.10', '192.168.60.11', '192.168.60.25', '192.168.60.44'];
   return Array.from({ length: n }, () => ({
     timestamp: new Date(Date.now() - rnd(0, 3_600_000)).toISOString(),
-    src_ip:    '192.168.60.10',
-    dst_ip:    '192.168.50.10',
+    src_ip:    pick(sourcePool),
+    dst_ip:    targetIp(),
     dst_port:  pick([80, 443, 22, 5000, 8080, 21]),
     proto:     pick(['TCP', 'TCP', 'UDP']),
     action:    pick(['alert', 'alert', 'pass', 'block']),
@@ -599,7 +816,8 @@ function mockSummary() {
     })),
     top_sources: [
       { ip: '192.168.60.10', count: rnd(60, 180) },
-      { ip: '192.168.50.10', count: rnd(5, 25) },
+      { ip: '192.168.60.11', count: rnd(20, 70) },
+      { ip: targetIp(), count: rnd(5, 25) },
       { ip: '10.0.2.15',     count: rnd(1, 10) },
     ],
     top_ports: [
@@ -618,7 +836,7 @@ function mockMLRows(n = 15) {
     const anom = Math.random() < 0.3;
     return {
       timestamp:       new Date(Date.now() - rnd(0, 3_600_000)).toISOString(),
-      src_ip:          '192.168.60.10',
+      src_ip:          pick(['192.168.60.10', '192.168.60.11', '192.168.60.25']),
       dst_port:        pick([80, 22, 443, 5000]),
       anomaly_score:   anom ? -(Math.random() * 0.25 + 0.05) : (Math.random() * 0.15 + 0.01),
       anomaly_flag:    anom ? -1 : 1,
@@ -929,6 +1147,8 @@ function startAutoRefresh() {
 // ───────────────────────────────────────────────────────────
 (function init() {
   document.getElementById('conn-dot').classList.add('offline');
+  setSelectedRun(null, null);
+  refreshControlState();
   refreshTelemetry();
   startAutoRefresh();
 })();
