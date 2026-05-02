@@ -194,7 +194,9 @@ Expected: UDP 514 and TCP 5514 appear as listening.
 touch /var/log/opnsense.log
 chmod 640 /var/log/opnsense.log
 ```
+
 and immediately run
+
 ```bash
 chown syslog:syslog /var/log/opnsense.log
 chmod 644 /var/log/opnsense.log
@@ -585,14 +587,23 @@ Set the required runtime variables. This removes the old fallback-token confusio
 
 ```bash
 export TOKEN='replace_with_a_long_random_token'
+# export TOKEN='RamyaBinduBansiDurbadalSirToken2022-2026'
 export API_TOKEN="$TOKEN"
 export KALI_CONTAINER='kali-lab'
 export SSH_USER='root'
 export TARGET_DEFAULT='192.168.50.10'
+export MAX_CONCURRENT_RUNS='3'
 export OPNSENSE_LOG_PATH="$HOME/logs/opnsense.log"
 export CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1'
+export KALI_IP_ASSIGN_CMD='echo assign $KALI_IP inside Kali here'
 uvicorn app:app --host 0.0.0.0 --port 5000
 ```
+
+Notes:
+
+1. `MAX_CONCURRENT_RUNS` limits how many attacks can run at once from the dashboard or API. Start with `3` unless you have already verified the host can handle more.
+2. `KALI_IP_ASSIGN_CMD` is optional. Without it, the API falls back to `sudo podman exec kali-lab ... ip addr ...` inside the Kali container.
+3. Valid dashboard-assigned Kali addresses must stay inside `192.168.60.0/24`. `192.168.60.1` and `192.168.60.2` stay reserved.
 
 Test it locally from a second terminal before backgrounding it:
 
@@ -620,8 +631,10 @@ nohup env \
   KALI_CONTAINER="$KALI_CONTAINER" \
   SSH_USER="$SSH_USER" \
   TARGET_DEFAULT="$TARGET_DEFAULT" \
+  MAX_CONCURRENT_RUNS="$MAX_CONCURRENT_RUNS" \
   OPNSENSE_LOG_PATH="$OPNSENSE_LOG_PATH" \
   CORS_ALLOWED_ORIGINS="$CORS_ALLOWED_ORIGINS" \
+  KALI_IP_ASSIGN_CMD="$KALI_IP_ASSIGN_CMD" \
   uvicorn app:app --host 0.0.0.0 --port 5000 > ~/lab/control-api/api.log 2>&1 &
 echo $! > ~/lab/control-api/api.pid
 ```
@@ -649,7 +662,33 @@ export FIREWALL_UNBAN_CMD='echo remove $BAN_IP from OPNsense alias here'
 
 Until you replace those placeholders with a real OPNsense integration, the dashboard still tracks bans in record-only mode.
 
-### 7.7 Place Dashboard HTML
+### 7.7 New Control Endpoints To Test
+
+The current control API also exposes:
+
+1. `POST /runs/stop-all` for the dashboard master stop button.
+2. `GET /kali/network` to show the currently assigned Kali address and reserved addresses.
+3. `POST /kali/network` to reassign Kali inside `192.168.60.0/24`.
+
+Quick checks:
+
+`[debian]`:
+
+```bash
+curl http://127.0.0.1:5000/kali/network \
+  -H "X-API-Token: $TOKEN"
+```
+
+```bash
+curl -X POST http://127.0.0.1:5000/runs/stop-all \
+  -H "X-API-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"manual_test"}'
+```
+
+If you want the dashboard to change Kali's IP directly, replace the placeholder `KALI_IP_ASSIGN_CMD` or let the default `podman exec` path handle it.
+
+### 7.8 Place Dashboard HTML
 
 Copy `dashboard/index.html` from your Windows host into the Ubuntu container or serve it from Debian.
 
@@ -674,8 +713,8 @@ mkdir -p ~/lab/dashboard
 `[debian]`:
 
 ```bash
-podman cp ~/Desktop/test/dashboard/index.html ubuntu:/root/lab/dashboard/
-podman exec ubuntu bash -c "cd /root/lab/dashboard && python3 -m http.server 8888 &"
+podman cp ~/Desktop/test/dashboard/index.html ubuntu-lab:/root/lab/dashboard/
+podman exec ubuntu-lab bash -c "cd /root/lab/dashboard && python3 -m http.server 8888 &"
 ```
 
 ---
@@ -700,10 +739,13 @@ Open `http://<Debian-IP>:8888` on your Windows host.
 2. Enter API Token = the token you set.
 3. Turn off Mock Mode.
 4. Click Attack Control tab.
-5. Select a scenario, set target IP if needed, and click Launch.
-6. Expected: run appears in the Recent Runs table with status accepted.
-7. Use Stop Selected to verify the kill switch.
-8. Use the firewall controls to test 1 hour, 5 hour, 10 hour, and 24 hour progressive bans.
+5. Expand an attack row, set the shared target IP if needed, and click Launch on one or more rows.
+6. Expected: runs appear in the Active And Recent Runs table with status `running` while live and later transition to `completed` or `failed` automatically.
+7. Verify the dashboard blocks new launches once the `MAX_CONCURRENT_RUNS` cap is reached.
+8. Use the row stop action and the master stop button to verify both kill-switch paths.
+9. Use the Kali network panel to test reassignment inside `192.168.60.0/24`.
+10. If you readdress Kali, update any OPNsense aliases that were pinned to the old source IP.
+11. Use the firewall controls to test 1 hour, 5 hour, 10 hour, and 24 hour progressive bans.
 
 ---
 

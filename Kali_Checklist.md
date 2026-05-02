@@ -9,11 +9,12 @@ This checklist covers everything done on or from the Kali container. Kali is the
 Lab context:
 
 1. Kali runs as a Podman container on Debian.
-2. Kali IP = 192.168.60.10.
+2. Kali default IP = 192.168.60.10, but the dashboard can reassign Kali anywhere inside `192.168.60.0/24` except reserved addresses.
 3. Gateway = 192.168.60.1 (OPNsense OPT1).
 4. Target = Ubuntu at 192.168.50.10.
 5. Commands prefixed with `[debian]` are run on the Debian host. All others are run inside the Kali container.
 6. Current architecture: Debian hosts the main dashboard and the control API at `http://<Debian-IP>:5000`.
+7. If you reassign Kali from the dashboard, update any OPNsense aliases or filters that were pinned to the old source IP.
 
 ---
 
@@ -34,7 +35,7 @@ Expected: a container for Kali is listed as Up.
 If not running, start it:
 
 ```bash
-sudo podman run -it --name kali-lab --replace --cap-add=NET_RAW --cap-add=NET_ADMIN --security-opt seccomp=unconfined --network opt1 --ip 192.168.60.10 kalilinux/kali-rolling
+sudo podman run -it --name kali-lab --replace --cap-add=NET_RAW --cap-add=NET_ADMIN --security-opt seccomp=unconfined --network opt1 --ip 192.168.60.10 kalilinux/kali-rolling sleep infinity
 ```
 
 Replace `kali` with your actual container name if different.
@@ -56,7 +57,7 @@ ip route
 
 Expected:
 
-1. An interface with 192.168.60.10 is present.
+1. An interface with the expected OPT1-side Kali address is present.
 2. Default route via 192.168.60.1 is shown.
 
 If IP or gateway is wrong, fix the Podman network assignment and restart the container before continuing.
@@ -221,7 +222,7 @@ After running the above:
 
 1. Open OPNsense > Services > Intrusion Detection > Alerts.
 2. Sort by newest first.
-3. Confirm alerts show source 192.168.60.10 and destination 192.168.50.10.
+3. Confirm alerts show the current Kali source IP and destination 192.168.50.10.
 
 Minimum: at least one alert must appear for Day 1 to be complete.
 
@@ -256,7 +257,7 @@ Expected: JSON response with `status: accepted` and a `run_id`.
 
 ### 5.3 Run Each Scenario via API
 
-Run one at a time and allow at least 60 seconds between each so events are clearly separated in logs.
+You can run multiple attacks simultaneously, but stay within the API concurrency cap configured on Debian, typically `3` unless you deliberately raised it.
 
 ```bash
 curl -X POST http://<Debian-IP>:5000/launch \
@@ -287,6 +288,7 @@ Additional scenarios exposed by the new API:
 4. `slow_http`
 
 The dashboard on Debian also exposes a kill switch for running attacks and progressive ban controls for attacker IPs.
+It also exposes a master stop button and Kali IP reassignment controls for the OPT1 subnet.
 
 ### 5.4 Record run_id for Each Run
 

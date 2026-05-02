@@ -20,6 +20,23 @@
       --red: #f85149;
       --yellow: #d29922;
       --orange: #e3b341;
+      --login-bg: rgba(5, 8, 14, 0.72);
+      --logo-filter: brightness(0) invert(1);
+    }
+    body[data-theme="light"] {
+      --bg: #eef3f8;
+      --surface: #ffffff;
+      --card: #ffffff;
+      --border: #bfd0e3;
+      --text: #0d1a2b;
+      --muted: #4c647f;
+      --blue: #005fc8;
+      --green: #067a31;
+      --red: #b11f27;
+      --yellow: #946300;
+      --orange: #9b5800;
+      --login-bg: rgba(210, 223, 238, 0.62);
+      --logo-filter: none;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -34,7 +51,7 @@
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 0.75rem 1.5rem;
+      padding: 0.55rem 1rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -42,8 +59,28 @@
       top: 0;
       z-index: 100;
     }
-    .logo { font-size: 1rem; font-weight: 700; color: var(--blue); letter-spacing: 0.03em; }
+    .header-left { display: flex; align-items: center; gap: 0.55rem; }
+    .brand-logo {
+      width: 50px;
+      height: 29px;
+      object-fit: contain;
+      filter: var(--logo-filter);
+    }
+    .logo { font-size: 0.94rem; font-weight: 700; color: var(--blue); letter-spacing: 0.03em; }
     .status-bar { display: flex; align-items: center; gap: 1rem; font-size: 0.78rem; color: var(--muted); }
+    .theme-btn {
+      min-width: 36px;
+      height: 28px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+    }
     .dot {
       width: 8px; height: 8px; border-radius: 50%;
       background: var(--green);
@@ -57,7 +94,7 @@
     .config-bar {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 0.6rem 1.5rem;
+      padding: 0.45rem 1rem;
       display: flex;
       flex-wrap: wrap;
       gap: 0.75rem;
@@ -105,12 +142,12 @@
     .tabs {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 0 1.5rem;
+      padding: 0 1rem;
       display: flex;
     }
     .tab-btn {
       background: none; border: none; color: var(--muted);
-      padding: 0.65rem 1.1rem;
+      padding: 0.5rem 0.85rem;
       cursor: pointer; font-size: 0.88rem; font-family: inherit;
       border-bottom: 2px solid transparent;
       transition: color 0.2s;
@@ -119,13 +156,13 @@
     .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
 
     /* ── Main layout ── */
-    main { padding: 1.25rem 1.5rem; max-width: 1500px; margin: 0 auto; }
+    main { padding: 0.8rem 1rem; max-width: 1480px; margin: 0 auto; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
     .row-bar {
       font-size: 0.73rem; color: var(--muted);
       display: flex; justify-content: flex-end; align-items: center;
-      gap: 0.75rem; margin-bottom: 1rem;
+      gap: 0.6rem; margin-bottom: 0.75rem;
     }
     .btn-sm {
       background: none; border: 1px solid var(--border);
@@ -136,10 +173,10 @@
     .btn-sm:hover { color: var(--text); border-color: var(--text); }
 
     /* ── Summary cards ── */
-    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.9rem; margin-bottom: 1.25rem; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.7rem; margin-bottom: 0.85rem; }
     .card {
       background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 0.9rem 1rem;
+      border-radius: 8px; padding: 0.7rem 0.8rem;
     }
     .card-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
     .card-value { font-size: 1.75rem; font-weight: 700; line-height: 1; }
@@ -152,19 +189,45 @@
     /* ── Panels and grids ── */
     .panel {
       background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 1rem; margin-bottom: 1rem;
+      border-radius: 8px; padding: 0.72rem; margin-bottom: 0.75rem;
     }
     .panel-title {
       font-size: 0.7rem; color: var(--muted);
       text-transform: uppercase; letter-spacing: 0.06em;
-      margin-bottom: 0.85rem;
+      margin-bottom: 0.6rem;
     }
-    .chart-wrap { position: relative; height: 190px; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    .panel-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+    }
+    .panel-title-row .panel-title { margin-bottom: 0; }
+    .catalog-stats {
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .chart-wrap { position: relative; height: 165px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 0.75rem; }
     @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
 
     /* ── Table ── */
     .table-wrap { overflow-x: auto; }
+    .table-wrap.scroll-y {
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .table-wrap.scroll-y thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    .rows-6 { max-height: 220px; }
+    .rows-12 { max-height: 380px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
     th {
       background: var(--surface); color: var(--muted); font-weight: 500;
@@ -192,16 +255,14 @@
     .b-anom   { background: rgba(227,179,65,.18); color: var(--orange); }
 
     /* ── Control panel ── */
-    .control-grid {
-      display: grid; grid-template-columns: 340px 1fr;
-      gap: 1rem;
+    .control-shell {
+      display: grid; grid-template-columns: minmax(0, 1.8fr) 360px;
+      gap: 0.75rem; margin-bottom: 0.7rem;
     }
-    @media (max-width: 800px) { .control-grid { grid-template-columns: 1fr; } }
-    .launch-box {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 1.1rem;
+    .control-rail { display: grid; gap: 1rem; }
+    @media (max-width: 980px) {
+      .control-shell { grid-template-columns: 1fr; }
     }
-    .launch-box h3 { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.9rem; }
     select {
       width: 100%; background: var(--surface); border: 1px solid var(--border);
       color: var(--text); padding: 0.45rem 0.65rem;
@@ -209,7 +270,7 @@
       margin-bottom: 0.5rem; appearance: none;
     }
     select:focus { outline: none; border-color: var(--blue); }
-    .scen-desc { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.75rem; line-height: 1.5; min-height: 36px; }
+    .scen-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.5; }
     .btn-launch {
       width: 100%; background: var(--blue); border: none; color: #fff;
       padding: 0.6rem; border-radius: 5px; font-size: 0.9rem;
@@ -222,13 +283,8 @@
       margin-top: 0.75rem; background: var(--surface);
       border: 1px solid var(--border); border-radius: 4px;
       padding: 0.65rem; font-size: 0.75rem; color: var(--muted);
-      min-height: 56px; word-break: break-all; white-space: pre-wrap;
+      min-height: 56px; word-break: break-word; white-space: pre-wrap;
     }
-    .run-log-box {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 1.1rem;
-    }
-    .run-log-box h3 { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.9rem; }
     .stack { display: grid; gap: 0.75rem; }
     .field-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.25rem; display: block; }
     .text-input {
@@ -242,24 +298,143 @@
       border-radius: 5px; font-size: 0.86rem; font-weight: 700; cursor: pointer; font-family: inherit;
       transition: opacity 0.2s;
     }
+    .btn-master, .btn-apply {
+      flex: 1; min-width: 110px; border: none; color: #fff; padding: 0.6rem;
+      border-radius: 5px; font-size: 0.86rem; font-weight: 700; cursor: pointer; font-family: inherit;
+      transition: opacity 0.2s;
+    }
     .btn-stop { background: var(--red); }
+    .btn-master { background: #b62324; }
     .btn-ban { background: var(--yellow); color: #111; }
     .btn-unban { background: var(--green); }
-    .btn-stop:hover, .btn-ban:hover, .btn-unban:hover { opacity: 0.85; }
-    .btn-stop:disabled, .btn-ban:disabled, .btn-unban:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-apply { background: var(--blue); }
+    .btn-stop:hover, .btn-ban:hover, .btn-unban:hover, .btn-master:hover, .btn-apply:hover { opacity: 0.85; }
+    .btn-stop:disabled, .btn-ban:disabled, .btn-unban:disabled, .btn-master:disabled, .btn-apply:disabled { opacity: 0.35; cursor: not-allowed; }
     .meta-box {
       background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
-      padding: 0.65rem; font-size: 0.75rem; color: var(--muted); min-height: 52px; white-space: pre-wrap;
+      padding: 0.55rem; font-size: 0.74rem; color: var(--muted); min-height: 42px; white-space: pre-wrap;
     }
-    .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+    .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.7rem; }
     @media (max-width: 950px) { .panel-grid { grid-template-columns: 1fr; } }
+    .catalog-name-btn {
+      background: none; border: none; color: var(--blue); cursor: pointer;
+      font: inherit; padding: 0; text-align: left;
+    }
+    .catalog-name-btn:hover { color: #8ec2ff; }
+    .catalog-detail-row td {
+      background: rgba(255,255,255,0.03);
+      padding-top: 0.75rem; padding-bottom: 0.85rem;
+    }
+    .catalog-actions { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+    .status-inline { font-size: 0.72rem; color: var(--muted); }
+    .hint { font-size: 0.72rem; color: var(--muted); line-height: 1.45; }
+    .icon-btn {
+      min-width: 34px;
+      height: 28px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .icon-btn.play { color: var(--green); }
+    .icon-btn.pause { color: var(--yellow); }
+    .icon-btn.stop { color: var(--red); }
+    .active-runs-list {
+      display: grid;
+      gap: 0.35rem;
+      max-height: 88px;
+      overflow-y: auto;
+    }
+    .active-run-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.25rem 0.4rem;
+      font-size: 0.72rem;
+      color: var(--text);
+    }
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      background: var(--login-bg);
+      backdrop-filter: blur(18px) saturate(120%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .login-overlay.hidden { display: none; }
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.95rem;
+      display: grid;
+      gap: 0.7rem;
+      box-shadow: 0 14px 40px rgba(0,0,0,0.35);
+    }
+    .login-logo {
+      width: 100%;
+      height: auto;
+      max-height: 128px;
+      object-fit: contain;
+      filter: var(--logo-filter);
+      padding: 0.3rem 0.2rem;
+    }
+    .login-title { font-size: 0.9rem; color: var(--blue); font-weight: 700; }
+    .login-input {
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.45rem 0.6rem;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.82rem;
+    }
+    .login-btn {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 0.5rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .login-error { min-height: 16px; font-size: 0.74rem; color: var(--red); }
   </style>
 </head>
 <body>
 
+<div class="login-overlay" id="login-overlay">
+  <form class="login-card" id="login-form">
+    <img class="login-logo" src="../logos/rbbd-logo.svg" alt="RBBD logo" width="1536" height="886.816143497762" onerror="this.onerror=null;this.src='logos/rbbd-logo.svg';">
+    <div class="login-title">NGFW Dashboard Login</div>
+    <input class="login-input" id="login-user" placeholder="Username" autocomplete="username">
+    <input class="login-input" id="login-pass" type="password" placeholder="Password" autocomplete="current-password">
+    <button class="login-btn" type="submit">Sign In</button>
+    <div class="login-error" id="login-error"></div>
+  </form>
+</div>
+
 <header>
-  <div class="logo">&#9632; NGFW Lab Security Dashboard</div>
+  <div class="header-left">
+    <img class="brand-logo" src="../logos/rbbd-logo.svg" alt="RBBD logo" width="1536" height="886.816143497762" onerror="this.onerror=null;this.src='logos/rbbd-logo.svg';">
+    <div class="logo">NGFW Lab Security Dashboard</div>
+  </div>
   <div class="status-bar">
+    <button class="theme-btn" id="theme-toggle" title="Toggle theme">🌙</button>
     <span><span class="dot offline" id="conn-dot"></span> <span id="conn-label">Mock Mode</span></span>
     <span id="last-refresh"></span>
   </div>
@@ -294,58 +469,64 @@
 
   <!-- ═══════════════════════════════════════ CONTROL ═══ -->
   <div class="tab-panel active" id="tab-control">
-    <div class="control-grid">
-
-      <div class="launch-box">
-        <h3>Launch Scenario</h3>
-        <div class="stack">
-          <div>
-            <label class="field-label" for="target-ip">Target IP</label>
-            <input class="text-input" id="target-ip" value="192.168.50.10" placeholder="192.168.50.10">
-          </div>
-        <select id="scenario-select">
-          <option value="tcp_syn_burst">TCP SYN Burst</option>
-          <option value="web_scan">Web Scan</option>
-          <option value="ssh_bruteforce_sim">SSH Brute Force Simulation</option>
-          <option value="sql_injection_sim">SQL Injection Simulation</option>
-          <option value="udp_flood">UDP Flood</option>
-          <option value="icmp_flood">ICMP Flood</option>
-          <option value="fin_scan">FIN Scan</option>
-          <option value="slow_http">Slow HTTP</option>
-        </select>
-        <div class="scen-desc" id="scen-desc"></div>
-        <div class="control-row">
-          <button class="btn-launch" id="btn-launch">&#9654;&nbsp; Launch</button>
-          <button class="btn-stop" id="btn-stop" disabled>Stop Selected</button>
+    <div class="control-shell">
+      <div class="panel">
+        <div class="panel-title-row">
+          <div class="panel-title">Attack Catalog</div>
+          <div class="catalog-stats" id="catalog-stats">Active 0 | Paused 0</div>
         </div>
-        </div>
-        <div class="launch-out" id="launch-out">Ready. Select a scenario and click Launch.</div>
-        <div class="meta-box" id="selected-run-box">No run selected.</div>
-      </div>
-
-      <div class="run-log-box">
-        <h3>Recent Runs</h3>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Time</th>
-                <th>Scenario</th>
-                <th>Run ID</th>
-                <th>Status</th>
-                <th>Action</th>
+                <th>Attack</th>
+                <th>Category</th>
+                <th>Active</th>
+                <th>Target</th>
+                <th>Actions</th>
               </tr>
             </thead>
-            <tbody id="run-log-body"></tbody>
+            <tbody id="attack-catalog-body"></tbody>
           </table>
         </div>
+        <div class="launch-out" id="launch-out">Ready. Expand an attack row for the description, then launch up to the configured concurrent cap.</div>
       </div>
 
-    </div>
-
-    <div class="panel-grid">
-      <div class="panel">
-        <div class="panel-title">Firewall Controls</div>
+      <div class="control-rail">
+        <div class="panel">
+          <div class="panel-title">Launch & Limits</div>
+          <div class="stack">
+            <div>
+              <label class="field-label" for="target-ip">Target IP</label>
+              <input class="text-input" id="target-ip" value="192.168.50.10" placeholder="192.168.50.10">
+            </div>
+            <div class="hint">Multiple attacks can run at once, but the API caps concurrency to protect the firewall and host.</div>
+            <div class="control-row">
+              <button class="btn-master" id="btn-master-stop">Master Stop</button>
+              <button class="btn-sm" id="btn-control-refresh">Refresh</button>
+            </div>
+            <div class="meta-box" id="run-cap-box">Concurrent run capacity unknown.</div>
+            <div class="meta-box">
+              <div class="field-label">Current Active Runs</div>
+              <div class="active-runs-list" id="active-runs-box"></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Kali Network</div>
+          <div class="stack">
+            <div>
+              <label class="field-label" for="kali-ip">Kali Source IP</label>
+              <input class="text-input" id="kali-ip" value="192.168.60.10" placeholder="192.168.60.10">
+            </div>
+            <div class="control-row">
+              <button class="btn-apply" id="btn-kali-ip-apply">Assign IP</button>
+            </div>
+            <div class="meta-box" id="kali-network-box">Kali network state unknown.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Firewall Controls</div>
         <div class="stack">
           <div>
             <label class="field-label" for="ban-ip">Offender IP</label>
@@ -367,9 +548,30 @@
           <div class="meta-box" id="firewall-status-box">Firewall hook status unknown.</div>
         </div>
       </div>
+      </div>
+    </div>
+
+    <div class="panel-grid">
+      <div class="panel">
+        <div class="panel-title">Active And Recent Runs</div>
+        <div class="table-wrap scroll-y rows-6">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Attack</th>
+                <th>Target</th>
+                <th>Run ID</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="run-log-body"></tbody>
+          </table>
+        </div>
+      </div>
       <div class="panel">
         <div class="panel-title">Active Ban List</div>
-        <div class="table-wrap">
+        <div class="table-wrap scroll-y rows-6">
           <table>
             <thead>
               <tr>
@@ -415,7 +617,7 @@
     </div>
     <div class="panel">
       <div class="panel-title">Recent Events</div>
-      <div class="table-wrap">
+      <div class="table-wrap scroll-y rows-12">
         <table>
           <thead>
             <tr>
@@ -454,7 +656,7 @@
     </div>
     <div class="panel">
       <div class="panel-title">Recent ML Predictions</div>
-      <div class="table-wrap">
+      <div class="table-wrap scroll-y rows-12">
         <table>
           <thead>
             <tr>
@@ -494,6 +696,30 @@ let charts = {};
 let runLog = [];
 let autoRefId = null;
 let selectedRunId = null;
+let appReady = false;
+let expandedScenarioId = null;
+const LOGIN_USER = 'admin';
+const LOGIN_PASS = 'rbbd';
+const THEME_STORAGE_KEY = 'ngfw_dashboard_theme';
+let scenarioCatalog = Object.entries(SCEN_DESCS).map(([id, description]) => ({
+  id,
+  label: id.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()),
+  description,
+  category: 'general',
+}));
+let controlConfig = {
+  max_concurrent_runs: 3,
+  default_target_ip: '192.168.50.10',
+  kali_network: {
+    subnet: '192.168.60.0/24',
+    reserved_ips: ['192.168.60.1', '192.168.60.2'],
+    current_ip: '192.168.60.10',
+    gateway: '192.168.60.1',
+    interface: 'eth0',
+    notes: 'Update any OPNsense aliases that rely on a fixed Kali IP.',
+  },
+};
+let kaliNetworkState = { ...controlConfig.kali_network };
 
 // ───────────────────────────────────────────────────────────
 //  Helpers
@@ -503,6 +729,7 @@ function apiToken() { return document.getElementById('api-token').value || ''; }
 function isMock()  { return document.getElementById('mock-toggle').checked; }
 function targetIp() { return document.getElementById('target-ip').value || '192.168.50.10'; }
 function banIp() { return document.getElementById('ban-ip').value || ''; }
+function kaliIp() { return document.getElementById('kali-ip').value || ''; }
 
 function fmtTime(isoStr) {
   try { return new Date(isoStr).toLocaleTimeString(); } catch { return isoStr; }
@@ -527,11 +754,82 @@ function badge(text, cls) {
 
 function setSelectedRun(runId, scenario) {
   selectedRunId = runId;
-  const stopBtn = document.getElementById('btn-stop');
-  stopBtn.disabled = !runId;
-  document.getElementById('selected-run-box').textContent = runId
-    ? `Selected run: ${runId}\nScenario: ${scenario || 'unknown'}`
-    : 'No run selected.';
+  renderActiveRunBox();
+}
+
+function scenarioLabel(scenarioId) {
+  return scenarioCatalog.find(item => item.id === scenarioId)?.label
+    || scenarioId.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+}
+
+function activeRuns() {
+  return runLog.filter(item => !['stopped', 'completed', 'failed'].includes(String(item.status || '').toLowerCase()));
+}
+
+function pausedRuns() {
+  return runLog.filter(item => String(item.status || '').toLowerCase() === 'paused');
+}
+
+function activeRunCountForScenario(scenarioId) {
+  return activeRuns().filter(item => item.scenario === scenarioId).length;
+}
+
+function latestActiveRunForScenario(scenarioId) {
+  return activeRuns().find(item => item.scenario === scenarioId) || null;
+}
+
+function canLaunchMoreRuns() {
+  return activeRuns().length < Number(controlConfig.max_concurrent_runs || 3);
+}
+
+function syncControlInputs() {
+  const targetInput = document.getElementById('target-ip');
+  const kaliInput = document.getElementById('kali-ip');
+  if (targetInput && !targetInput.dataset.userEdited) {
+    targetInput.value = controlConfig.default_target_ip || '192.168.50.10';
+  }
+  if (kaliInput && !kaliInput.dataset.userEdited) {
+    kaliInput.value = kaliNetworkState.ip || controlConfig.kali_network?.current_ip || '192.168.60.10';
+  }
+}
+
+function renderRunCapacity() {
+  const active = activeRuns().length;
+  const paused = pausedRuns().length;
+  const limit = Number(controlConfig.max_concurrent_runs || 3);
+  const reserved = (controlConfig.kali_network?.reserved_ips || []).join(', ') || 'none';
+  document.getElementById('run-cap-box').textContent =
+    `Active runs: ${active}/${limit}\nCurrent target: ${targetIp()}\nKali subnet: ${controlConfig.kali_network?.subnet || '192.168.60.0/24'}\nReserved Kali IPs: ${reserved}`;
+  document.getElementById('btn-master-stop').disabled = active === 0;
+  const stats = document.getElementById('catalog-stats');
+  if (stats) stats.textContent = `Active ${active} | Paused ${paused}`;
+}
+
+function renderActiveRunBox() {
+  const box = document.getElementById('active-runs-box');
+  if (!box) return;
+  box.innerHTML = '';
+  const active = activeRuns().slice(0, 8);
+  if (!active.length) {
+    const empty = document.createElement('div');
+    empty.className = 'status-inline';
+    empty.textContent = 'No active runs.';
+    box.appendChild(empty);
+    return;
+  }
+  active.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'active-run-item';
+    row.textContent = `${scenarioLabel(item.scenario)} | ${item.run_id}`;
+    box.appendChild(row);
+  });
+}
+
+function renderKaliNetworkState() {
+  const state = kaliNetworkState || {};
+  const notes = state.notes || 'Update OPNsense aliases if they pin a fixed Kali IP.';
+  document.getElementById('kali-network-box').textContent =
+    `Current IP: ${state.ip || 'unknown'}\nInterface: ${state.interface || 'eth0'}\nGateway: ${state.gateway || '192.168.60.1'}\nSubnet: ${state.subnet || '192.168.60.0/24'}\nReserved: ${(state.reserved_ips || []).join(', ')}\n${notes}`;
 }
 
 function severityBadge(s) {
@@ -555,6 +853,33 @@ function anomalyBadge(flag) {
     : badge('NORMAL',  'b-ok');
 }
 
+function runStatusBadge(status) {
+  const value = String(status || 'unknown').toLowerCase();
+  if (value === 'paused') return badge('PAUSED', 'b-med');
+  if (['stopped', 'completed'].includes(value)) return badge(value.toUpperCase(), 'b-pass');
+  if (['failed', 'error'].includes(value)) return badge(value.toUpperCase(), 'b-block');
+  return badge(value.toUpperCase(), 'b-info');
+}
+
+function currentTheme() {
+  return document.body.dataset.theme || 'dark';
+}
+
+function applyTheme(theme) {
+  const selected = theme === 'light' ? 'light' : 'dark';
+  document.body.dataset.theme = selected;
+  const btn = document.getElementById('theme-toggle');
+  if (btn) {
+    btn.textContent = selected === 'dark' ? '🌙' : '☀';
+    btn.title = selected === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  }
+  localStorage.setItem(THEME_STORAGE_KEY, selected);
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+}
+
 async function apiFetch(path, opts = {}) {
   const url = apiBase() + path;
   const res = await fetch(url, {
@@ -565,7 +890,17 @@ async function apiFetch(path, opts = {}) {
       ...(opts.headers || {}),
     },
   });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) {
+    let message = 'HTTP ' + res.status;
+    try {
+      const payload = await res.json();
+      if (typeof payload?.detail === 'string') message = payload.detail;
+      else if (payload?.detail?.message) message = payload.detail.message;
+    } catch {
+      // Keep fallback status message.
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 
@@ -600,75 +935,199 @@ document.getElementById('mock-toggle').addEventListener('change', function () {
 });
 
 // ───────────────────────────────────────────────────────────
-//  Scenario description
+//  Control panel
 // ───────────────────────────────────────────────────────────
-const scenSel = document.getElementById('scenario-select');
-function updateDesc() {
-  document.getElementById('scen-desc').textContent = SCEN_DESCS[scenSel.value] || '';
-}
-scenSel.addEventListener('change', updateDesc);
-updateDesc();
-
-// ───────────────────────────────────────────────────────────
-//  Launch
-// ───────────────────────────────────────────────────────────
-document.getElementById('btn-launch').addEventListener('click', async () => {
-  const scenario = scenSel.value;
-  const outEl    = document.getElementById('launch-out');
-  const btn      = document.getElementById('btn-launch');
-  btn.disabled   = true;
-
-  if (isMock()) {
-    const run_id = 'mock-' + Math.random().toString(36).slice(2, 10);
-    const entry  = { ts: new Date().toLocaleTimeString(), scenario, run_id, status: 'accepted' };
-    runLog.unshift(entry);
-    setSelectedRun(run_id, scenario);
-    renderRunLog();
-    outEl.textContent = JSON.stringify({ status: 'accepted (mock)', scenario, run_id, target_ip: targetIp() }, null, 2);
-    btn.disabled = false;
+async function launchScenario(scenarioId) {
+  const outEl = document.getElementById('launch-out');
+  if (!canLaunchMoreRuns()) {
+    outEl.textContent = `Concurrent attack cap reached (${controlConfig.max_concurrent_runs}). Stop an active run before launching another.`;
     return;
   }
-
+  if (isMock()) {
+    const runId = 'mock-' + Math.random().toString(36).slice(2, 10);
+    runLog.unshift({
+      submitted_at: new Date().toISOString(),
+      scenario: scenarioId,
+      target_ip: targetIp(),
+      run_id: runId,
+      status: 'accepted',
+    });
+    setSelectedRun(runId, scenarioId);
+    renderScenarioCatalog();
+    renderRunLog();
+    renderRunCapacity();
+    renderActiveRunBox();
+    outEl.textContent = JSON.stringify({ status: 'accepted (mock)', scenario: scenarioId, run_id: runId, target_ip: targetIp() }, null, 2);
+    return;
+  }
   try {
     const data = await apiFetch('/launch', {
       method: 'POST',
-      body: JSON.stringify({ scenario, target_ip: targetIp(), source_hint: banIp() || 'kali-container' }),
+      body: JSON.stringify({ scenario: scenarioId, target_ip: targetIp(), source_hint: kaliIp() || 'kali-container' }),
     });
-    runLog.unshift({ ts: new Date().toLocaleTimeString(), scenario, run_id: data.run_id, status: data.status });
-    setSelectedRun(data.run_id, scenario);
+    runLog.unshift(data);
+    setSelectedRun(data.run_id, data.scenario);
+    renderScenarioCatalog();
     renderRunLog();
+    renderRunCapacity();
+    renderActiveRunBox();
     outEl.textContent = JSON.stringify(data, null, 2);
   } catch (err) {
     outEl.textContent = 'Error: ' + err.message;
-  } finally {
-    btn.disabled = false;
   }
-});
+}
 
-document.getElementById('btn-stop').addEventListener('click', async () => {
+async function stopRunById(runId, reason = 'dashboard_manual_stop') {
   const outEl = document.getElementById('launch-out');
-  if (!selectedRunId) return;
+  const entry = runLog.find(item => item.run_id === runId);
+  if (!entry) return;
   if (isMock()) {
-    const row = runLog.find(item => item.run_id === selectedRunId);
-    if (row) row.status = 'stopped';
+    entry.status = 'stopped';
+    entry.stopped_at = new Date().toISOString();
+    entry.stop_reason = reason;
+    renderScenarioCatalog();
     renderRunLog();
-    outEl.textContent = JSON.stringify({ run_id: selectedRunId, status: 'stopped (mock)' }, null, 2);
+    renderRunCapacity();
+    renderActiveRunBox();
+    outEl.textContent = JSON.stringify({ run_id: runId, status: 'stopped (mock)', reason }, null, 2);
     return;
   }
   try {
-    const data = await apiFetch(`/runs/${selectedRunId}/stop`, {
+    const data = await apiFetch(`/runs/${runId}/stop`, {
       method: 'POST',
-      body: JSON.stringify({ reason: 'dashboard_kill_switch' }),
+      body: JSON.stringify({ reason }),
     });
-    const row = runLog.find(item => item.run_id === selectedRunId);
-    if (row) row.status = data.status || 'stopped';
+    Object.assign(entry, data);
+    renderScenarioCatalog();
     renderRunLog();
+    renderRunCapacity();
+    renderActiveRunBox();
     outEl.textContent = JSON.stringify(data, null, 2);
   } catch (err) {
     outEl.textContent = 'Error: ' + err.message;
   }
-});
+}
 
+async function pauseRunById(runId, reason = 'dashboard_pause') {
+  const outEl = document.getElementById('launch-out');
+  const entry = runLog.find(item => item.run_id === runId);
+  if (!entry) return;
+  if (isMock()) {
+    entry.status = 'paused';
+    entry.paused_at = new Date().toISOString();
+    renderScenarioCatalog();
+    renderRunLog();
+    renderRunCapacity();
+    renderActiveRunBox();
+    outEl.textContent = JSON.stringify({ run_id: runId, status: 'paused (mock)', reason }, null, 2);
+    return;
+  }
+  try {
+    const data = await apiFetch(`/runs/${runId}/pause`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    Object.assign(entry, data);
+    renderScenarioCatalog();
+    renderRunLog();
+    renderRunCapacity();
+    renderActiveRunBox();
+    outEl.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    outEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function resumeRunById(runId, reason = 'dashboard_resume') {
+  const outEl = document.getElementById('launch-out');
+  const entry = runLog.find(item => item.run_id === runId);
+  if (!entry) return;
+  if (isMock()) {
+    entry.status = 'running';
+    entry.resumed_at = new Date().toISOString();
+    renderScenarioCatalog();
+    renderRunLog();
+    renderRunCapacity();
+    renderActiveRunBox();
+    outEl.textContent = JSON.stringify({ run_id: runId, status: 'running (mock)', reason }, null, 2);
+    return;
+  }
+  try {
+    const data = await apiFetch(`/runs/${runId}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+    Object.assign(entry, data);
+    renderScenarioCatalog();
+    renderRunLog();
+    renderRunCapacity();
+    renderActiveRunBox();
+    outEl.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    outEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function stopAllRuns() {
+  const outEl = document.getElementById('launch-out');
+  if (isMock()) {
+    runLog.forEach(item => {
+      if (!['stopped', 'completed', 'failed'].includes(String(item.status).toLowerCase())) item.status = 'stopped';
+    });
+    renderScenarioCatalog();
+    renderRunLog();
+    renderRunCapacity();
+    renderActiveRunBox();
+    outEl.textContent = JSON.stringify({ stopped: 'all (mock)', reason: 'dashboard_master_stop' }, null, 2);
+    return;
+  }
+  try {
+    const data = await apiFetch('/runs/stop-all', {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'dashboard_master_stop' }),
+    });
+    await refreshControlState();
+    outEl.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    outEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function assignKaliIp() {
+  const box = document.getElementById('kali-network-box');
+  const ipAddress = kaliIp();
+  if (!ipAddress) return;
+  if (isMock()) {
+    kaliNetworkState = {
+      ...kaliNetworkState,
+      ip: ipAddress,
+      subnet: controlConfig.kali_network?.subnet || '192.168.60.0/24',
+      reserved_ips: controlConfig.kali_network?.reserved_ips || ['192.168.60.1', '192.168.60.2'],
+      gateway: controlConfig.kali_network?.gateway || '192.168.60.1',
+      interface: controlConfig.kali_network?.interface || 'eth0',
+      notes: 'Mock reassignment applied. Update OPNsense aliases if they pin Kali to a fixed IP.',
+    };
+    renderKaliNetworkState();
+    return;
+  }
+  try {
+    const data = await apiFetch('/kali/network', {
+      method: 'POST',
+      body: JSON.stringify({ ip: ipAddress, reason: 'dashboard_readdress' }),
+    });
+    kaliNetworkState = data;
+    controlConfig.kali_network = { ...(controlConfig.kali_network || {}), current_ip: data.ip, reserved_ips: data.reserved_ips, subnet: data.subnet, gateway: data.gateway, interface: data.interface, notes: data.notes };
+    renderKaliNetworkState();
+    renderRunCapacity();
+  } catch (err) {
+    box.textContent = 'Error: ' + err.message;
+  }
+}
+
+document.getElementById('btn-master-stop').addEventListener('click', stopAllRuns);
+document.getElementById('btn-control-refresh').addEventListener('click', refreshControlState);
+document.getElementById('btn-kali-ip-apply').addEventListener('click', assignKaliIp);
+document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 document.getElementById('btn-ban').addEventListener('click', async () => {
   const box = document.getElementById('firewall-status-box');
   const ipAddress = banIp();
@@ -710,26 +1169,114 @@ document.getElementById('btn-unban').addEventListener('click', async () => {
   }
 });
 
+document.getElementById('target-ip').addEventListener('input', event => {
+  event.target.dataset.userEdited = '1';
+  renderScenarioCatalog();
+  renderRunCapacity();
+});
+document.getElementById('kali-ip').addEventListener('input', event => {
+  event.target.dataset.userEdited = '1';
+});
+
+function renderScenarioCatalog() {
+  const tbody = document.getElementById('attack-catalog-body');
+  tbody.innerHTML = '';
+  scenarioCatalog.forEach(item => {
+    const tr = document.createElement('tr');
+
+    const tdName = document.createElement('td');
+    const nameBtn = document.createElement('button');
+    nameBtn.className = 'catalog-name-btn';
+    nameBtn.textContent = item.label;
+    nameBtn.addEventListener('click', () => {
+      expandedScenarioId = expandedScenarioId === item.id ? null : item.id;
+      renderScenarioCatalog();
+    });
+    tdName.appendChild(nameBtn);
+
+    const tdCategory = td(item.category || 'general');
+    const tdActive = document.createElement('td');
+    tdActive.appendChild(badge(String(activeRunCountForScenario(item.id)), 'b-info'));
+    const tdTarget = td(targetIp());
+    const tdActions = document.createElement('td');
+    const actionWrap = document.createElement('div');
+    actionWrap.className = 'catalog-actions';
+    const latestRun = latestActiveRunForScenario(item.id);
+    const latestPaused = latestRun && String(latestRun.status || '').toLowerCase() === 'paused';
+    const canPause = latestRun && String(latestRun.status || '').toLowerCase() === 'running';
+    const launchBtn = document.createElement('button');
+    launchBtn.className = 'icon-btn play';
+    launchBtn.textContent = '▶';
+    launchBtn.title = latestPaused ? 'Resume latest paused run' : 'Launch attack';
+    launchBtn.disabled = !canLaunchMoreRuns();
+    launchBtn.addEventListener('click', () => {
+      if (latestPaused) {
+        resumeRunById(latestRun.run_id, 'dashboard_resume_latest');
+        return;
+      }
+      launchScenario(item.id);
+    });
+    if (latestPaused) launchBtn.disabled = false;
+    actionWrap.appendChild(launchBtn);
+
+    const pauseBtn = document.createElement('button');
+    pauseBtn.className = 'icon-btn pause';
+    pauseBtn.textContent = '⏸';
+    pauseBtn.title = 'Pause attack';
+    pauseBtn.disabled = !canPause;
+    pauseBtn.addEventListener('click', () => latestRun && pauseRunById(latestRun.run_id, 'dashboard_pause_latest'));
+    actionWrap.appendChild(pauseBtn);
+
+    const stopLatestBtn = document.createElement('button');
+    stopLatestBtn.className = 'icon-btn stop';
+    stopLatestBtn.textContent = '⏹';
+    stopLatestBtn.title = 'Stop latest active run';
+    stopLatestBtn.disabled = !latestRun;
+    stopLatestBtn.addEventListener('click', () => latestRun && stopRunById(latestRun.run_id, 'dashboard_stop_latest'));
+    actionWrap.appendChild(stopLatestBtn);
+    tdActions.appendChild(actionWrap);
+
+    tr.append(tdName, tdCategory, tdActive, tdTarget, tdActions);
+    tbody.appendChild(tr);
+
+    if (expandedScenarioId === item.id) {
+      const detailTr = document.createElement('tr');
+      detailTr.className = 'catalog-detail-row';
+      const detailTd = document.createElement('td');
+      detailTd.colSpan = 5;
+      const desc = document.createElement('div');
+      desc.className = 'scen-desc';
+      desc.textContent = item.description || SCEN_DESCS[item.id] || 'No description available.';
+      const note = document.createElement('div');
+      note.className = 'status-inline';
+      note.textContent = latestRun
+        ? `Latest active run: ${latestRun.run_id} targeting ${latestRun.target_ip || targetIp()}`
+        : 'No active run for this attack right now.';
+      detailTd.append(desc, note);
+      detailTr.appendChild(detailTd);
+      tbody.appendChild(detailTr);
+    }
+  });
+}
+
 function renderRunLog() {
   const tbody = document.getElementById('run-log-body');
   tbody.innerHTML = '';
-  runLog.slice(0, 30).forEach(e => {
+  runLog.slice(0, 30).forEach(item => {
     const tr = document.createElement('tr');
     const tdId = document.createElement('td');
-    tdId.textContent = e.run_id;
+    tdId.textContent = item.run_id;
     tdId.style.fontSize = '0.7rem';
-    tr.append(td(e.ts), td(e.scenario), tdId);
+    tr.append(
+      td(fmtTime(item.submitted_at || item.ts)),
+      td(scenarioLabel(item.scenario)),
+      td(item.target_ip || targetIp()),
+      tdId,
+    );
     const tdStatus = document.createElement('td');
-    tdStatus.appendChild(badge(e.status, 'b-info'));
+    tdStatus.appendChild(runStatusBadge(item.status));
     tr.appendChild(tdStatus);
-    const tdAction = document.createElement('td');
-    const stopBtn = document.createElement('button');
-    stopBtn.className = 'btn-sm';
-    stopBtn.textContent = 'Select';
-    stopBtn.addEventListener('click', () => setSelectedRun(e.run_id, e.scenario));
-    tdAction.appendChild(stopBtn);
     tbody.appendChild(tr);
-    tr.appendChild(tdAction);
   });
 }
 
@@ -751,29 +1298,64 @@ function renderBanLog(rows) {
 }
 
 async function refreshControlState() {
-  const box = document.getElementById('firewall-status-box');
+  const firewallBox = document.getElementById('firewall-status-box');
   if (isMock()) {
+    scenarioCatalog = Object.entries(SCEN_DESCS).map(([id, description]) => ({
+      id,
+      label: scenarioLabel(id),
+      description,
+      category: id.includes('flood') ? 'network' : (id.includes('scan') ? 'transport' : 'application'),
+    }));
+    kaliNetworkState = {
+      ip: kaliIp() || '192.168.60.10',
+      interface: 'eth0',
+      gateway: '192.168.60.1',
+      subnet: '192.168.60.0/24',
+      reserved_ips: ['192.168.60.1', '192.168.60.2'],
+      notes: 'Mock mode: aliases may need updates after live reassignment.',
+    };
+    controlConfig = {
+      ...controlConfig,
+      max_concurrent_runs: 3,
+      default_target_ip: targetIp(),
+      kali_network: { ...kaliNetworkState, current_ip: kaliNetworkState.ip },
+    };
+    renderScenarioCatalog();
+    renderRunLog();
+    renderActiveRunBox();
     renderBanLog([{ ip: '192.168.60.10', duration_minutes: 60, expires_at: new Date(Date.now() + 3600_000).toISOString(), status: 'active' }]);
-    box.textContent = 'Mock mode: firewall hooks are simulated.';
+    renderKaliNetworkState();
+    renderRunCapacity();
+    firewallBox.textContent = 'Mock mode: firewall hooks are simulated.';
     return;
   }
   try {
-    const [status, bans, runs] = await Promise.all([
+    const [config, status, bans, runs, kaliNetwork] = await Promise.all([
+      apiFetch('/config'),
       apiFetch('/firewall/status'),
       apiFetch('/firewall/bans').then(r => r.bans || []),
       apiFetch('/runs').then(r => r.runs || []),
+      apiFetch('/kali/network'),
     ]);
-    runLog = runs.map(item => ({
-      ts: fmtTime(item.submitted_at),
-      scenario: item.scenario,
-      run_id: item.run_id,
-      status: item.status,
+    controlConfig = { ...controlConfig, ...config };
+    kaliNetworkState = kaliNetwork;
+    scenarioCatalog = (config.scenarios || []).map(item => ({
+      id: item.id,
+      label: scenarioLabel(item.id),
+      description: item.description || SCEN_DESCS[item.id] || '',
+      category: item.category || 'general',
     }));
+    runLog = runs;
+    syncControlInputs();
+    renderScenarioCatalog();
     renderRunLog();
+    renderActiveRunBox();
     renderBanLog(bans);
-    box.textContent = `Ban hook enabled: ${status.ban_hook_enabled}\nUnban hook enabled: ${status.unban_hook_enabled}\nActive bans: ${status.active_bans}`;
+    renderKaliNetworkState();
+    renderRunCapacity();
+    firewallBox.textContent = `Ban hook enabled: ${status.ban_hook_enabled}\nUnban hook enabled: ${status.unban_hook_enabled}\nActive bans: ${status.active_bans}`;
   } catch (err) {
-    box.textContent = 'Error: ' + err.message;
+    firewallBox.textContent = 'Error: ' + err.message;
   }
 }
 
@@ -1142,15 +1724,36 @@ function startAutoRefresh() {
   }, 30_000);
 }
 
-// ───────────────────────────────────────────────────────────
-//  Init
-// ───────────────────────────────────────────────────────────
-(function init() {
+function initApp() {
+  if (appReady) return;
+  appReady = true;
   document.getElementById('conn-dot').classList.add('offline');
   setSelectedRun(null, null);
   refreshControlState();
   refreshTelemetry();
   startAutoRefresh();
+}
+
+document.getElementById('login-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const username = (document.getElementById('login-user').value || '').trim();
+  const password = document.getElementById('login-pass').value || '';
+  const errorEl = document.getElementById('login-error');
+  if (username === LOGIN_USER && password === LOGIN_PASS) {
+    document.getElementById('login-overlay').classList.add('hidden');
+    errorEl.textContent = '';
+    initApp();
+    return;
+  }
+  errorEl.textContent = 'Invalid credentials. Try again.';
+});
+
+// ───────────────────────────────────────────────────────────
+//  Init
+// ───────────────────────────────────────────────────────────
+(function init() {
+  applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || 'dark');
+  document.getElementById('login-user').focus();
 })();
 </script>
 </body>

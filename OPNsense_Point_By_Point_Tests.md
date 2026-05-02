@@ -7,7 +7,7 @@ Lab assumptions used here:
 1. OPNsense VM = 2 vCPU, 2 GB RAM, 10 GB storage.
 2. Debian VM = 4 vCPU, 4 GB RAM, 40 GB storage.
 3. Debian hosts Podman containers for Kali and Ubuntu.
-4. Kali IP = 192.168.60.10.
+4. Kali default IP = 192.168.60.10, but it may be reassigned by the dashboard inside `192.168.60.0/24`.
 5. Ubuntu IP = 192.168.50.10.
 6. OPNsense LAN IP = 192.168.50.1.
 7. OPNsense OPT1 IP = 192.168.60.1.
@@ -154,7 +154,7 @@ Expected:
 In OPNsense:
 
 1. Open Firewall > Log Files > Live View.
-2. Filter by source 192.168.60.10.
+2. Filter by the current Kali source IP.
 3. Re-run one allowed test and one blocked test.
 4. Confirm one pass entry and one block entry appear.
 

@@ -640,7 +640,3 @@ Use this order:
 6. Check Ubuntu syslog listener.
 7. Re-test one change at a time.
 End of checklist.
-
-
-
-

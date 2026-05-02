@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -41,6 +42,7 @@ WORK_DIR = Path(os.environ.get("CONTROL_API_WORK_DIR", Path.cwd())).resolve()
 STATE_DIR = Path(os.environ.get("CONTROL_API_STATE_DIR", WORK_DIR / "state")).resolve()
 RUN_LOG_PATH = Path(os.environ.get("RUN_LOG_PATH", STATE_DIR / "runs.json")).resolve()
 BAN_LOG_PATH = Path(os.environ.get("BAN_LOG_PATH", STATE_DIR / "bans.json")).resolve()
+KALI_NETWORK_PATH = Path(os.environ.get("KALI_NETWORK_PATH", STATE_DIR / "kali_network.json")).resolve()
 LOG_PATH = Path(os.environ.get("OPNSENSE_LOG_PATH", "~/logs/opnsense.log")).expanduser().resolve()
 ML_RESULTS_PATH = Path(os.environ.get("ML_RESULTS_PATH", "~/lab/ml/latest_results.json")).expanduser().resolve()
 ML_PREDICTIONS_PATH = Path(os.environ.get("ML_PREDICTIONS_PATH", "~/lab/ml/predictions.json")).expanduser().resolve()
@@ -49,7 +51,20 @@ KALI_CONTAINER = os.environ.get("KALI_CONTAINER", "kali-lab")
 KALI_SCENARIOS_DIR = os.environ.get("KALI_SCENARIOS_DIR", "/opt/lab/scenarios")
 TARGET_DEFAULT = os.environ.get("TARGET_DEFAULT", "192.168.50.10")
 SSH_USER = os.environ.get("SSH_USER", "root")
+MAX_CONCURRENT_RUNS = max(1, int(os.environ.get("MAX_CONCURRENT_RUNS", "3")))
+KALI_ALLOWED_SUBNET = ipaddress.ip_network(os.environ.get("KALI_ALLOWED_SUBNET", "192.168.60.0/24"), strict=False)
+KALI_INTERFACE = os.environ.get("KALI_INTERFACE", "eth0")
+KALI_GATEWAY_IP = os.environ.get("KALI_GATEWAY_IP", "192.168.60.1")
+KALI_CURRENT_IP = os.environ.get("KALI_CURRENT_IP", "192.168.60.10")
+# KALI_IP_ASSIGN_CMD not defined
+KALI_IP_ASSIGN_CMD = os.environ.get("KALI_IP_ASSIGN_CMD", "")
+KALI_RESERVED_IPS = {
+    item.strip()
+    for item in os.environ.get("KALI_RESERVED_IPS", "192.168.60.1,192.168.60.2").split(",")
+    if item.strip()
+}
 
+# Firewall banning mechanism is missing 
 BAN_DURATION_CHOICES = [60, 300, 600, 1440]
 FIREWALL_BAN_CMD = os.environ.get("FIREWALL_BAN_CMD", "")
 FIREWALL_UNBAN_CMD = os.environ.get("FIREWALL_UNBAN_CMD", "")
@@ -65,6 +80,7 @@ app.add_middleware(
 )
 
 state_lock = Lock()
+process_registry: dict[str, subprocess.Popen[Any]] = {}
 
 SCENARIOS: dict[str, dict[str, str]] = {
     "tcp_syn_burst": {
@@ -120,12 +136,36 @@ def load_json_list(path: Path) -> list[dict[str, Any]]:
     return data if isinstance(data, list) else []
 
 
+def load_json_dict(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 run_log: list[dict[str, Any]] = load_json_list(RUN_LOG_PATH)
 ban_log: list[dict[str, Any]] = load_json_list(BAN_LOG_PATH)
+kali_network_state: dict[str, Any] = load_json_dict(KALI_NETWORK_PATH) or {
+    "ip": KALI_CURRENT_IP,
+    "interface": KALI_INTERFACE,
+    "gateway": KALI_GATEWAY_IP,
+    "subnet": str(KALI_ALLOWED_SUBNET),
+    "reserved_ips": sorted(KALI_RESERVED_IPS),
+    "updated_at": utcnow_iso(),
+    "mode": "default",
+    "notes": "Adjust OPNsense aliases if they rely on a fixed Kali source IP.",
+}
 
 
 def save_state(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+
+
+def save_dict_state(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def require_auth(token: str) -> None:
@@ -145,6 +185,96 @@ def find_ban(ip_address: str) -> dict[str, Any] | None:
         if item["ip"] == ip_address and item["status"] == "active":
             return item
     return None
+
+
+def is_active_run(entry: dict[str, Any]) -> bool:
+    return entry.get("status") not in {"stopped", "completed", "failed"}
+
+
+def active_run_count() -> int:
+    return sum(1 for item in run_log if is_active_run(item))
+
+
+def signal_process_group(pid: int, sig: int) -> None:
+    getpgid = getattr(os, "getpgid", None)
+    killpg = getattr(os, "killpg", None)
+    if callable(getpgid) and callable(killpg):
+        try:
+            killpg(getpgid(pid), sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+        return
+    try:
+        os.kill(pid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def process_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def refresh_run_states() -> None:
+    changed = False
+    for entry in run_log:
+        if not is_active_run(entry):
+            continue
+        run_id = entry["run_id"]
+        process_handle = process_registry.get(run_id)
+        if process_handle is not None:
+            return_code = process_handle.poll()
+            if return_code is None:
+                if entry.get("status") != "paused":
+                    entry["status"] = "running"
+                    changed = True
+                continue
+            entry["status"] = "completed" if return_code == 0 else "failed"
+            entry["finished_at"] = utcnow_iso()
+            entry["return_code"] = return_code
+            process_registry.pop(run_id, None)
+            changed = True
+            continue
+        pid = entry.get("pid")
+        if isinstance(pid, int) and process_exists(pid):
+            if entry.get("status") != "paused":
+                entry["status"] = "running"
+                changed = True
+            continue
+        entry["status"] = "completed"
+        entry.setdefault("finished_at", utcnow_iso())
+        process_registry.pop(run_id, None)
+        changed = True
+    if changed:
+        save_state(RUN_LOG_PATH, run_log)
+
+
+def terminate_process_group(pid: int) -> None:
+    signal_process_group(pid, signal.SIGTERM)
+
+
+def validate_ipv4(ip_value: str) -> str:
+    try:
+        return str(ipaddress.ip_address(ip_value))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid IPv4 address: {ip_value}") from exc
+
+
+def validate_kali_ip(ip_value: str) -> str:
+    normalized = validate_ipv4(ip_value)
+    address = ipaddress.ip_address(normalized)
+    if address not in KALI_ALLOWED_SUBNET:
+        raise HTTPException(status_code=400, detail=f"Kali IP must be inside {KALI_ALLOWED_SUBNET}")
+    if normalized in KALI_RESERVED_IPS:
+        raise HTTPException(status_code=400, detail=f"Kali IP {normalized} is reserved")
+    if address == KALI_ALLOWED_SUBNET.network_address or address == KALI_ALLOWED_SUBNET.broadcast_address:
+        raise HTTPException(status_code=400, detail="Network and broadcast addresses cannot be assigned")
+    return normalized
 
 
 def run_shell_hook(command: str, payload: dict[str, Any]) -> dict[str, str]:
@@ -171,6 +301,47 @@ def run_shell_hook(command: str, payload: dict[str, Any]) -> dict[str, str]:
         )
     return {
         "mode": "hook",
+        "stdout": completed.stdout[-400:],
+        "stderr": completed.stderr[-400:],
+    }
+
+
+def assign_kali_ip(ip_address: str) -> dict[str, str]:
+    payload = {
+        "KALI_IP": ip_address,
+        "KALI_INTERFACE": KALI_INTERFACE,
+        "KALI_GATEWAY_IP": KALI_GATEWAY_IP,
+        "KALI_ALLOWED_SUBNET": str(KALI_ALLOWED_SUBNET),
+        "KALI_CONTAINER": KALI_CONTAINER,
+    }
+    if KALI_IP_ASSIGN_CMD.strip():
+        return run_shell_hook(KALI_IP_ASSIGN_CMD, payload)
+    prefix_length = KALI_ALLOWED_SUBNET.prefixlen
+    shell_snippet = " ; ".join(
+        [
+            f"ip addr flush dev {shlex.quote(KALI_INTERFACE)}",
+            f"ip addr add {shlex.quote(f'{ip_address}/{prefix_length}')} dev {shlex.quote(KALI_INTERFACE)}",
+            f"ip link set {shlex.quote(KALI_INTERFACE)} up",
+            f"ip route replace default via {shlex.quote(KALI_GATEWAY_IP)}",
+        ]
+    )
+    completed = subprocess.run(
+        ["sudo", "podman", "exec", KALI_CONTAINER, "/bin/bash", "-lc", shell_snippet],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Kali IP assignment failed",
+                "stdout": completed.stdout[-400:],
+                "stderr": completed.stderr[-400:],
+            },
+        )
+    return {
+        "mode": "podman-exec",
         "stdout": completed.stdout[-400:],
         "stderr": completed.stderr[-400:],
     }
@@ -343,9 +514,68 @@ class UnbanRequest(BaseModel):
     reason: str = Field(default="manual_release")
 
 
+class KaliIpAssignRequest(BaseModel):
+    ip: str
+    reason: str = Field(default="dashboard_readdress")
+
+
+class RunControlRequest(BaseModel):
+    reason: str = Field(default="dashboard_control")
+
+
+def stop_run_entry(entry: dict[str, Any], reason: str) -> dict[str, Any]:
+    if not is_active_run(entry):
+        return entry
+    stop_cmd = ["sudo", "podman", "exec", KALI_CONTAINER, "pkill", "-TERM", "-f", entry["run_id"]]
+    subprocess.run(stop_cmd, check=False, capture_output=True, text=True)
+    pid = entry.get("pid")
+    if isinstance(pid, int):
+        terminate_process_group(pid)
+    entry["status"] = "stopped"
+    entry["stopped_at"] = utcnow_iso()
+    entry["stop_reason"] = reason
+    process_registry.pop(entry["run_id"], None)
+    return entry
+
+
+def pause_run_entry(entry: dict[str, Any], reason: str) -> dict[str, Any]:
+    if not is_active_run(entry):
+        raise HTTPException(status_code=409, detail="Run is not active")
+    if entry.get("status") == "paused":
+        return entry
+    run_id = entry["run_id"]
+    pause_cmd = ["sudo", "podman", "exec", KALI_CONTAINER, "pkill", "-STOP", "-f", run_id]
+    subprocess.run(pause_cmd, check=False, capture_output=True, text=True)
+    pid = entry.get("pid")
+    if isinstance(pid, int):
+        signal_process_group(pid, signal.SIGSTOP)
+    entry["status"] = "paused"
+    entry["paused_at"] = utcnow_iso()
+    entry["pause_reason"] = reason
+    return entry
+
+
+def resume_run_entry(entry: dict[str, Any], reason: str) -> dict[str, Any]:
+    if not is_active_run(entry):
+        raise HTTPException(status_code=409, detail="Run is not active")
+    if entry.get("status") != "paused":
+        return entry
+    run_id = entry["run_id"]
+    resume_cmd = ["sudo", "podman", "exec", KALI_CONTAINER, "pkill", "-CONT", "-f", run_id]
+    subprocess.run(resume_cmd, check=False, capture_output=True, text=True)
+    pid = entry.get("pid")
+    if isinstance(pid, int):
+        signal_process_group(pid, signal.SIGCONT)
+    entry["status"] = "running"
+    entry["resumed_at"] = utcnow_iso()
+    entry["resume_reason"] = reason
+    return entry
+
+
 @app.get("/health")
 def healthcheck() -> dict[str, Any]:
     cleanup_expired_bans()
+    refresh_run_states()
     return {
         "status": "ok",
         "log_path": str(LOG_PATH),
@@ -358,6 +588,7 @@ def healthcheck() -> dict[str, Any]:
 def get_config(x_api_token: str = Header(default="")) -> dict[str, Any]:
     require_auth(x_api_token)
     cleanup_expired_bans()
+    refresh_run_states()
     return {
         "scenarios": [
             {
@@ -370,6 +601,15 @@ def get_config(x_api_token: str = Header(default="")) -> dict[str, Any]:
         "ban_durations_minutes": BAN_DURATION_CHOICES,
         "firewall_hook_enabled": bool(FIREWALL_BAN_CMD.strip()),
         "default_target_ip": TARGET_DEFAULT,
+        "max_concurrent_runs": MAX_CONCURRENT_RUNS,
+        "kali_network": {
+            "subnet": str(KALI_ALLOWED_SUBNET),
+            "reserved_ips": sorted(KALI_RESERVED_IPS),
+            "current_ip": kali_network_state.get("ip", KALI_CURRENT_IP),
+            "gateway": KALI_GATEWAY_IP,
+            "interface": KALI_INTERFACE,
+            "notes": "If OPNsense aliases reference a fixed Kali IP, update them after reassignment.",
+        },
     }
 
 
@@ -379,6 +619,12 @@ def launch(req: LaunchRequest, x_api_token: str = Header(default="")) -> dict[st
     cleanup_expired_bans()
     if req.scenario not in SCENARIOS:
         raise HTTPException(status_code=400, detail="Scenario not allowed")
+    req.target_ip = validate_ipv4(req.target_ip)
+    if active_run_count() >= MAX_CONCURRENT_RUNS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Concurrent attack cap reached ({MAX_CONCURRENT_RUNS}). Stop an active run before launching another.",
+        )
     run_id = str(uuid4())
     cmd = kali_exec_command(SCENARIOS[req.scenario]["script"], run_id, req.target_ip)
     process = subprocess.Popen(
@@ -387,13 +633,14 @@ def launch(req: LaunchRequest, x_api_token: str = Header(default="")) -> dict[st
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+    process_registry[run_id] = process
     entry = {
         "run_id": run_id,
         "scenario": req.scenario,
         "target_ip": req.target_ip,
         "source_hint": req.source_hint,
         "submitted_at": utcnow_iso(),
-        "status": "accepted",
+        "status": "running",
         "pid": process.pid,
     }
     with state_lock:
@@ -407,6 +654,7 @@ def launch(req: LaunchRequest, x_api_token: str = Header(default="")) -> dict[st
 def get_runs(x_api_token: str = Header(default="")) -> dict[str, Any]:
     require_auth(x_api_token)
     cleanup_expired_bans()
+    refresh_run_states()
     return {"runs": run_log[:30]}
 
 
@@ -414,21 +662,54 @@ def get_runs(x_api_token: str = Header(default="")) -> dict[str, Any]:
 def stop_run(run_id: str, req: StopRequest, x_api_token: str = Header(default="")) -> dict[str, Any]:
     require_auth(x_api_token)
     cleanup_expired_bans()
+    refresh_run_states()
     entry = find_run(run_id)
-    stop_cmd = ["sudo", "podman", "exec", KALI_CONTAINER, "pkill", "-TERM", "-f", run_id]
-    subprocess.run(stop_cmd, check=False, capture_output=True, text=True)
-    pid = entry.get("pid")
-    if isinstance(pid, int):
-        try:
-            os.killpg(os.getpgid(pid), signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-    entry["status"] = "stopped"
-    entry["stopped_at"] = utcnow_iso()
-    entry["stop_reason"] = req.reason
+    stop_run_entry(entry, req.reason)
     with state_lock:
         save_state(RUN_LOG_PATH, run_log)
     return entry
+
+
+@app.post("/runs/{run_id}/pause")
+def pause_run(run_id: str, req: RunControlRequest, x_api_token: str = Header(default="")) -> dict[str, Any]:
+    require_auth(x_api_token)
+    cleanup_expired_bans()
+    refresh_run_states()
+    entry = find_run(run_id)
+    pause_run_entry(entry, req.reason)
+    with state_lock:
+        save_state(RUN_LOG_PATH, run_log)
+    return entry
+
+
+@app.post("/runs/{run_id}/resume")
+def resume_run(run_id: str, req: RunControlRequest, x_api_token: str = Header(default="")) -> dict[str, Any]:
+    require_auth(x_api_token)
+    cleanup_expired_bans()
+    refresh_run_states()
+    entry = find_run(run_id)
+    resume_run_entry(entry, req.reason)
+    with state_lock:
+        save_state(RUN_LOG_PATH, run_log)
+    return entry
+
+
+@app.post("/runs/stop-all")
+def stop_all_runs(req: StopRequest, x_api_token: str = Header(default="")) -> dict[str, Any]:
+    require_auth(x_api_token)
+    cleanup_expired_bans()
+    refresh_run_states()
+    stopped_runs: list[dict[str, Any]] = []
+    with state_lock:
+        for entry in run_log:
+            if is_active_run(entry):
+                stopped_runs.append(stop_run_entry(entry, req.reason))
+        save_state(RUN_LOG_PATH, run_log)
+    return {
+        "stopped": len(stopped_runs),
+        "reason": req.reason,
+        "run_ids": [item["run_id"] for item in stopped_runs],
+    }
 
 
 @app.get("/firewall/status")
@@ -448,6 +729,46 @@ def list_bans(x_api_token: str = Header(default="")) -> dict[str, Any]:
     require_auth(x_api_token)
     cleanup_expired_bans()
     return {"bans": ban_log}
+
+
+@app.get("/kali/network")
+def get_kali_network(x_api_token: str = Header(default="")) -> dict[str, Any]:
+    require_auth(x_api_token)
+    cleanup_expired_bans()
+    return {
+        "ip": kali_network_state.get("ip", KALI_CURRENT_IP),
+        "interface": KALI_INTERFACE,
+        "gateway": KALI_GATEWAY_IP,
+        "subnet": str(KALI_ALLOWED_SUBNET),
+        "reserved_ips": sorted(KALI_RESERVED_IPS),
+        "mode": kali_network_state.get("mode", "default"),
+        "updated_at": kali_network_state.get("updated_at", utcnow_iso()),
+        "notes": "Readdressing Kali may require OPNsense alias updates if you use fixed source-IP aliases.",
+    }
+
+
+@app.post("/kali/network")
+def set_kali_network(req: KaliIpAssignRequest, x_api_token: str = Header(default="")) -> dict[str, Any]:
+    require_auth(x_api_token)
+    cleanup_expired_bans()
+    ip_address = validate_kali_ip(req.ip)
+    hook_result = assign_kali_ip(ip_address)
+    kali_network_state.update(
+        {
+            "ip": ip_address,
+            "interface": KALI_INTERFACE,
+            "gateway": KALI_GATEWAY_IP,
+            "subnet": str(KALI_ALLOWED_SUBNET),
+            "reserved_ips": sorted(KALI_RESERVED_IPS),
+            "updated_at": utcnow_iso(),
+            "reason": req.reason,
+            "mode": hook_result["mode"],
+            "notes": "Readdressing Kali may require OPNsense alias updates if you use fixed source-IP aliases.",
+        }
+    )
+    with state_lock:
+        save_dict_state(KALI_NETWORK_PATH, kali_network_state)
+    return kali_network_state
 
 
 @app.post("/firewall/ban")
