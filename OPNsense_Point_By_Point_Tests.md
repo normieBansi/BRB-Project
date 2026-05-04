@@ -140,8 +140,8 @@ Expected:
 From Ubuntu:
 
 ```bash
-ping -c 2 192.168.60.10
-nc -zv 192.168.60.10 22
+ping -c 2 <current-kali-ip>
+nc -zv <current-kali-ip> 22
 ```
 
 Expected:
@@ -265,7 +265,7 @@ In OPNsense:
 
 1. Open Services > Intrusion Detection > Alerts.
 2. Sort newest first.
-3. Filter by source 192.168.60.10 if possible.
+3. Filter by the currently assigned Kali source IP if possible.
 4. Check for SID, message, source, destination, and action.
 
 Expected:
@@ -287,9 +287,96 @@ Expected:
 
 ---
 
-## 6. Day 2 Remote Logging Tests
+## 6. Day 2 API Control and REST Integration Tests
 
-### 6.1 Confirm Debian Listener Is Active
+These tests verify OPNsense REST alias integration with Debian API controls before broader logging validation.
+
+### 6.0 Verify Alias Types Before Running Any Hook Tests
+
+In OPNsense > Firewall > Aliases, confirm:
+
+1. `KALI_HOST` is Type `External (advanced)`. If it is Type `Host(s)`, delete it and recreate as `External (advanced)`.
+2. `AUTO_BAN_IPS` is Type `External (advanced)`. Same action if wrong type.
+
+Why: The REST alias_util endpoints only manage entries in External/table-type aliases. A `Host(s)` alias type will accept the REST call but silently ignore the address change.
+
+### 6.1 Run the One-Shot Debian Smoke Test First
+
+On Debian:
+
+```bash
+cd ~/lab/control-api/scripts
+API_TOKEN="$TOKEN" ./debian_smoke_test.sh --api-base http://127.0.0.1:5000
+```
+
+Expected:
+
+1. Script prints a pass or warn summary for launch/control and hook wiring.
+2. Script exits non-zero only on hard failures.
+
+### 6.2 Verify API Hook Status
+
+On Debian:
+
+```bash
+curl http://127.0.0.1:5000/config \
+  -H "X-API-Token: $TOKEN"
+```
+
+Expected:
+
+1. `firewall_hook_enabled` is `true`.
+2. `firewall_unban_hook_enabled` is `true`.
+3. `firewall_integration_mode` is `opnsense-rest`.
+4. `opnsense_api_enabled` is `true`.
+
+### 6.3 Run Firewall Hook Self-Test
+
+On Debian:
+
+```bash
+curl -X POST http://127.0.0.1:5000/firewall/hook-test \
+  -H "X-API-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip":"192.168.60.222","reason":"point_test_hook"}'
+```
+
+Expected:
+
+1. Response status is `ok`.
+2. OPNsense table for `AUTO_BAN_IPS` changes and then reverts.
+3. Response `ban.mode` and `unban.mode` show `opnsense-rest`.
+
+### 6.4 Reassign Kali IP from API and Validate Alias Sync
+
+On Debian:
+
+```bash
+curl -X POST http://127.0.0.1:5000/kali/network \
+  -H "X-API-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip":"192.168.60.20"}'
+```
+
+Expected:
+
+1. API returns the new Kali IP assignment.
+2. OPNsense `KALI_HOST` table reflects the same new address.
+
+### 6.5 Re-Run One Allowed and One Blocked Traffic Test
+
+After reassignment, run one pass case and one block case again from Kali.
+
+Expected:
+
+1. Rule behavior is unchanged.
+2. Logs now show the new source IP.
+
+---
+
+## 7. Day 2 Remote Logging Tests
+
+### 7.1 Confirm Debian Listener Is Active
 
 On Debian:
 
@@ -301,7 +388,7 @@ Expected:
 
 1. UDP 514 or TCP 5514 is listening, depending on your setup.
 
-### 6.2 Confirm OPNsense Firewall Logs Reach Debian
+### 7.2 Confirm OPNsense Firewall Logs Reach Debian
 
 On Debian:
 
@@ -315,7 +402,7 @@ Expected:
 
 1. Packets arrive from the OPNsense IP.
 
-### 6.3 Confirm Logs Are Written or Parsed
+### 7.3 Confirm Logs Are Written or Parsed
 
 On Debian:
 
@@ -328,7 +415,7 @@ Expected:
 
 1. You can see recent OPNsense-originated records or forwarding activity.
 
-### 6.4 Confirm Suricata Logs Also Reach Debian
+### 7.4 Confirm Suricata Logs Also Reach Debian
 
 1. Keep log capture running on Debian.
 2. Re-run one Suricata-triggering test from Kali.
@@ -340,11 +427,11 @@ Expected:
 
 ---
 
-## 7. Day 2 Optional Exposure Tests
+## 8. Day 2 Optional Exposure Tests
 
 Run only if you deliberately created a controlled exposure path.
 
-### 7.1 Port Forward Sanity Check
+### 8.1 Port Forward Sanity Check
 
 In OPNsense:
 
@@ -358,9 +445,9 @@ Expected:
 
 ---
 
-## 8. Day 3 Final OPNsense Review Tests
+## 9. Day 3 Final OPNsense Review Tests
 
-### 8.1 Rule Table Review
+### 9.1 Rule Table Review
 
 In OPNsense:
 
@@ -372,7 +459,7 @@ Expected:
 
 1. Policy is still least-privilege.
 
-### 8.2 NAT Review
+### 9.2 NAT Review
 
 In OPNsense:
 
@@ -383,7 +470,7 @@ Expected:
 
 1. Outbound mode is still Automatic or Hybrid unless you intentionally changed it.
 
-### 8.3 Final DNS Enforcement Test
+### 9.3 Final DNS Enforcement Test
 
 From Kali:
 
@@ -404,7 +491,7 @@ Expected:
 1. Firewall DNS succeeds.
 2. Direct external DNS remains blocked.
 
-### 8.4 Export Backup Test
+### 9.4 Export Backup Test
 
 In OPNsense:
 
@@ -418,7 +505,7 @@ Expected:
 
 ---
 
-## 9. Final Pass Criteria
+## 10. Final Pass Criteria
 
 Consider OPNsense validated only when all are true:
 
@@ -432,3 +519,5 @@ Consider OPNsense validated only when all are true:
 8. Debian receives OPNsense logs.
 9. IPS has been safely tested or deliberately left off with justification.
 10. Backup export succeeds.
+11. Hook self-test can ban and unban on OPNsense without manual edits.
+12. Kali IP reassignment from API is reflected in `KALI_HOST` and in OPNsense logs.

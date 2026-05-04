@@ -1,19 +1,34 @@
 # Ubuntu Container Checklist
 
-**Navigation:** [OPNsense Checklist](OPNsense_Click_By_Click_Checklist.md) | [Kali Checklist](Kali_Checklist.md) | [Lab Guide](NGFW_3Day_Lab_Guide.md)
+**Navigation:** [OPNsense Checklist](OPNsense_Click_By_Click_Checklist.md) | [Kali Checklist](Kali_Checklist.md) | [Theory Guide](NGFW_Theory_to_Action_Guide.md)
+
+**Theory Quick Index (Most Used):**
+
+1. [Telemetry Quality and Signal-to-Noise](NGFW_Theory_to_Action_Guide.md#6-theory-telemetry-quality-and-signal-to-noise)
+2. [Containment and Incident Response Loop](NGFW_Theory_to_Action_Guide.md#7-theory-containment-and-incident-response-loop)
+3. [Safe Orchestration and Reproducibility](NGFW_Theory_to_Action_Guide.md#8-theory-safe-orchestration-and-reproducibility)
+4. [ML-Augmented NGFW Analytics](NGFW_Theory_to_Action_Guide.md#9-theory-ml-augmented-ngfw-analytics)
+5. [Minimal Exposure for External Access](NGFW_Theory_to_Action_Guide.md#11-theory-minimal-exposure-for-external-access)
 
 ---
 
-This checklist covers everything done on or from the Ubuntu container and the Debian control plane: target services, log receiver, SIEM, ML pipeline, Debian-hosted control API, and the Debian-hosted dashboard.
+This checklist is a deterministic runbook for Ubuntu-container and Debian-control-plane work.
 
-Lab context:
+Execution tags used in this file:
 
-1. Ubuntu runs as a Podman container on Debian.
-2. Ubuntu IP = 192.168.50.10.
-3. Gateway = 192.168.50.1 (OPNsense LAN).
-4. Debian host has 4 vCPU, 4 GB RAM, 40 GB storage.
-5. Commands prefixed with `[debian]` are run on the Debian host. All others are inside the Ubuntu container.
-6. Current architecture: Debian is the control plane. Ubuntu is primarily the target, log receiver, and ML execution environment.
+1. `[debian]` run on Debian host terminal.
+2. `[ubuntu]` run inside Ubuntu container shell.
+3. `[kali]` run inside Kali container shell.
+4. `[windows]` run on Windows host terminal.
+
+Lab constants used by this checklist:
+
+1. Ubuntu target IP: `192.168.50.10`
+2. Ubuntu gateway: `192.168.50.1`
+3. OPNsense LAN IP: `192.168.50.1`
+4. Kali subnet: `192.168.60.0/24`
+5. Debian LAN-side API address: `http://192.168.50.2:5000`
+6. Debian OPT1-side API address: `http://192.168.60.2:5000`
 
 ---
 
@@ -23,49 +38,54 @@ Lab context:
 
 ### 1.1 Confirm Ubuntu Container Is Running
 
-On Debian:
+`[debian]`:
 
 ```bash
-podman ps
+podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Networks}}"
 ```
 
-Expected: Ubuntu container is listed as Up.
+Expected: `ubuntu-lab` is listed as running.
 
-If not running:
+If not running, create and start it exactly:
 
 ```bash
-sudo podman run -d --name ubuntu-lab --replace  --cap-add=NET_RAW --cap-add=NET_BIND_SERVICE --network lan1 --ip 192.168.50.10 -v ./10-opnsense.conf:/etc/rsyslog.d/10-opnsense.conf:ro -v ./logs:/var/log ubuntu rsyslogd -n
+sudo podman run -d --name ubuntu-lab --replace \
+  --cap-add=NET_RAW --cap-add=NET_BIND_SERVICE \
+  --network lan1 --ip 192.168.50.10 \
+  ubuntu sleep infinity
 ```
-
-Replace `ubuntu` with your actual container name.
 
 ### 1.2 Get a Shell into Ubuntu
 
-```bash
-podman exec -it ubuntu bash
-```
+`[debian]`:
 
-All following commands are run inside this shell unless marked `[debian]`.
+```bash
+sudo podman exec -it ubuntu-lab bash
+```
 
 ### 1.3 Verify IP and Gateway
 
+`[ubuntu]`:
+
 ```bash
-ip a
+ip -4 addr show eth0
 ip route
 ```
 
 Expected:
 
-1. Interface with 192.168.50.10.
-2. Default route via 192.168.50.1.
+1. `eth0` has `192.168.50.10`.
+2. default route is via `192.168.50.1`.
 
 ### 1.4 Ping OPNsense LAN
+
+`[ubuntu]`:
 
 ```bash
 ping -c 2 192.168.50.1
 ```
 
-Expected: replies from 192.168.50.1. If this fails, stop and fix Podman networking first.
+Expected: replies from `192.168.50.1`.
 
 ---
 
@@ -73,41 +93,25 @@ Expected: replies from 192.168.50.1. If this fails, stop and fix Podman networki
 
 ### 2.1 Update and Install
 
-```bash
-apt update && apt upgrade -y
-apt install -y \
-  apache2 \
-  curl \
-  rsyslog \
-  tcpdump \
-  python3 \
-  python3-venv \
-  python3-pip \
-  git \
-  jq \
-  netcat-openbsd \
-  nano
-```
-
-#### Also error "The apache2 configtest failed."
+`[ubuntu]`:
 
 ```bash
-# Missing log directory
-mkdir -p /var/log/apache2
-chown -R www-data:www-data /var/log/apache2
-# ServerName warning (non-fatal)
-echo "ServerName 192.168.50.10" >> /etc/apache2/apache2.conf
+apt update
+apt -y upgrade
+apt install -y apache2 curl rsyslog tcpdump python3 python3-venv python3-pip git jq netcat-openbsd nano
 ```
 
-as `/var/log` is a mounted volume → default Apache dirs absent
+Expected: command completes without package dependency errors.
 
 ### 2.2 Verify Python Version
+
+`[ubuntu]`:
 
 ```bash
 python3 --version
 ```
 
-Expected: 3.9 or higher.
+Expected: Python 3.10+ is available.
 
 ---
 
@@ -115,92 +119,83 @@ Expected: 3.9 or higher.
 
 ### 3.1 Start and Enable Apache
 
+`[ubuntu]`:
+
 ```bash
 service apache2 start
+service apache2 status --no-pager || true
 ```
 
-If systemd is available inside the container:
-
-```bash
-systemctl enable --now apache2
-```
+Expected: Apache is active.
 
 ### 3.2 Verify Apache Responds Locally
 
+`[ubuntu]`:
+
 ```bash
-curl http://127.0.0.1
+curl -I http://127.0.0.1
 ```
 
-Expected: HTML of the default Apache page is printed.
+Expected: HTTP status header is returned.
 
 ### 3.3 Verify Apache Responds from Kali
 
-From the Kali container:
+`[kali]`:
 
 ```bash
 curl -I http://192.168.50.10
+nc -zv 192.168.50.10 80
 ```
 
-Expected: HTTP 200 or 403 headers. If the connection times out, check OPNsense LAN rules allow Kali to Ubuntu on port 80.
+Expected: HTTP response and open TCP/80 check.
 
 ---
 
 ## 4. Configure rsyslog Log Receiver
 
-Ubuntu must receive logs from OPNsense before anything else in the SIEM pipeline can work.
-
 ### 4.1 Create rsyslog Config for OPNsense
 
-run it inside bash only, not fish.
+`[ubuntu]`:
 
 ```bash
 cat > /etc/rsyslog.d/10-opnsense.conf << 'EOF'
-# OPNsense remote syslog receiver
-
 module(load="imudp")
 input(type="imudp" port="514")
 
 module(load="imtcp")
 input(type="imtcp" port="5514")
 
-# Write OPNsense logs to a dedicated file
-if $fromhost-ip == '192.168.50.1' then /var/log/opnsense.log
+if $fromhost-ip startswith '192.168.50.' or $fromhost-ip startswith '192.168.60.' then /var/log/opnsense.log
 & stop
 EOF
 ```
 
-Replace `192.168.50.1` with the actual OPNsense LAN IP if different.
-
 ### 4.2 Restart rsyslog
 
-```bash
-sudo podman restart ubuntu-lab
-ps aux | grep rsyslogd
-```
+`[ubuntu]`:
 
-Expected: rsyslog is active and running.
+```bash
+service rsyslog restart
+service rsyslog status --no-pager || true
+```
 
 ### 4.3 Confirm Listener Sockets Are Open
 
+`[ubuntu]`:
+
 ```bash
-ss -lunpt | grep -E '514|5514'
+ss -lunpt | grep -E '(:514|:5514)'
 ```
 
-Expected: UDP 514 and TCP 5514 appear as listening.
+Expected: UDP 514 and/or TCP 5514 listeners are visible.
 
 ### 4.4 Create the Log File Early
 
+`[ubuntu]`:
+
 ```bash
 touch /var/log/opnsense.log
-chmod 640 /var/log/opnsense.log
-```
-
-and immediately run
-
-```bash
-chown syslog:syslog /var/log/opnsense.log
-chmod 644 /var/log/opnsense.log
-rsyslogd -N1
+chmod 664 /var/log/opnsense.log
 ```
 
 ---
@@ -209,46 +204,41 @@ rsyslogd -N1
 
 ### 5.1 Confirm OPNsense Logs Are Arriving
 
-On Ubuntu, run a live capture:
+`[ubuntu]`:
 
 ```bash
-tcpdump -ni any port 514 or port 5514
+tcpdump -ni any 'udp port 514 or tcp port 5514'
 ```
 
-In OPNsense UI, go to Firewall > Log Files > Live View. This generates log traffic.
+Generate traffic from Kali while tcpdump runs. Then stop capture with Ctrl+C.
 
-Expected: packets from 192.168.50.1 appear in tcpdump output.
+Expected: packets from OPNsense appear.
 
 ### 5.2 Check rsyslog Is Writing to File
 
-After a few seconds:
+`[ubuntu]`:
 
 ```bash
-tail -f /var/log/opnsense.log
+tail -n 30 /var/log/opnsense.log
 ```
 
-Expected: log lines from OPNsense appear. Ctrl+C to stop.
+Expected: recent firewall/suricata entries are present.
 
 ### 5.3 Day 1 Complete Conditions
 
-Day 1 is done when:
+Day 1 is complete only if all are true:
 
-1. Apache serves HTTP responses.
-2. rsyslog listens on UDP 514 and TCP 5514.
-3. OPNsense log packets arrive and are written to /var/log/opnsense.log.
+1. Ubuntu container networking is correct.
+2. Apache is reachable from Kali.
+3. rsyslog listeners are active.
+4. OPNsense logs are present in `/var/log/opnsense.log`.
 
 #### Extra: Clean up log files
 
+Optional reset before day 2:
+
 ```bash
-truncate -s 0 /var/log/opnsense.log
-# or
 : > /var/log/opnsense.log
-```
-
-incase issue arises
-
-```bash
-chown syslog:syslog /var/log/opnsense.log
 ```
 
 ---
@@ -257,22 +247,17 @@ chown syslog:syslog /var/log/opnsense.log
 
 ## 6. Choose and Deploy SIEM
 
-Given the Debian VM has 4 GB total RAM across all containers, use Grafana + Loki as the primary stack. It uses roughly 300 to 500 MB total and still gives dashboard + log search capability.
-
-If you have more RAM available, Wazuh or OpenSearch can be substituted, but both need 2 to 4 GB alone.
+This runbook uses Loki + Promtail + Grafana on Debian.
 
 ### 6.1 Install Podman Compose on Debian
 
 `[debian]`:
 
 ```bash
-pip3 install podman-compose
-```
-
-Or:
-
-```bash
-apt install -y podman-compose
+sudo apt update
+sudo apt install -y podman podman-compose
+podman --version
+podman-compose --version
 ```
 
 ### 6.2 Create Compose Directory on Debian
@@ -280,8 +265,13 @@ apt install -y podman-compose
 `[debian]`:
 
 ```bash
-mkdir -p ~/lab/siem
-cd ~/lab/siem
+mkdir -p ~/lab/siem/loki ~/lab/siem/promtail ~/lab/logs
+```
+
+Ensure OPNsense log file is available to Debian runtime path:
+
+```bash
+touch ~/lab/logs/opnsense.log
 ```
 
 ### 6.3 Create Loki Config File
@@ -289,31 +279,29 @@ cd ~/lab/siem
 `[debian]`:
 
 ```bash
-cat > loki-config.yaml << 'EOF'
+cat > ~/lab/siem/loki/loki-config.yaml << 'EOF'
 auth_enabled: false
 
 server:
   http_listen_port: 3100
 
 ingester:
-  wal:
-    enabled: true
-    dir: /loki/wal
   lifecycler:
     address: 127.0.0.1
     ring:
       kvstore:
         store: inmemory
       replication_factor: 1
-  chunk_idle_period: 3m
-  chunk_retain_period: 1m
+    final_sleep: 0s
+  chunk_idle_period: 5m
+  chunk_retain_period: 30s
 
 schema_config:
   configs:
     - from: 2024-01-01
       store: boltdb-shipper
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -322,12 +310,13 @@ storage_config:
   boltdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/cache
-    shared_store: filesystem
   filesystem:
     directory: /loki/chunks
 
 limits_config:
-  reject_old_samples: false
+  enforce_metric_name: false
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
 
 chunk_store_config:
   max_look_back_period: 0s
@@ -335,10 +324,6 @@ chunk_store_config:
 table_manager:
   retention_deletes_enabled: false
   retention_period: 0s
-
-compactor:
-  working_directory: /loki/compactor
-  shared_store: filesystem
 EOF
 ```
 
@@ -347,7 +332,7 @@ EOF
 `[debian]`:
 
 ```bash
-cat > promtail-config.yaml << 'EOF'
+cat > ~/lab/siem/promtail/promtail-config.yaml << 'EOF'
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -365,89 +350,50 @@ scrape_configs:
           - localhost
         labels:
           job: opnsense
+          host: debian
           __path__: /var/log/opnsense.log
 EOF
 ```
-<!--
-- **📌 Small Detour: what I broke — Promtail Path (Critical)**
-  - **Rule:** Use **container path**, not host path in `promtail-config.yaml`.
-  - **❌ Incorrect:** `__path__: /home/vbox/logs/opnsense.log`
-  - **✅ Correct:** `__path__: /var/log/opnsense.log`
-  - **Why:** Promtail runs inside the container. The host file `/home/vbox/logs/opnsense.log` is mounted to `/var/log/opnsense.log`, so only the container path is visible.
-  - **Symptom if wrong:** “No labels received” in Grafana; Promtail logs show the host path.
-  - **Fix:** `podman-compose down && podman-compose up -d`
--->
-
-<div style="border: 1px solid var(--vscode-widget-border, #cbd5e1); background: var(--vscode-editor-background, #f8fafc); color: var(--vscode-editor-foreground, #0f172a); padding: 14px; border-radius: 8px; margin: 16px 0; font-family: inherit;">
-  <div style="font-weight: 600; margin-bottom: 8px;">📌 Small Detour: What I broke — Promtail Path (Critical)</div>
-  <div style="margin-bottom: 8px;"><strong>Rule:</strong> Use <strong>container path</strong>, not host path.</div>
-  <div style="margin-bottom: 4px;"><strong>❌ Incorrect</strong></div>
-  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>__path__: /home/vbox/logs/opnsense.log</code></pre>
-  <div style="margin: 8px 0 4px;"><strong>✅ Correct</strong></div>
-  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>__path__: /var/log/opnsense.log</code></pre>
-  <div style="margin: 8px 0 4px;"><strong>Why</strong></div>
-  <ul style="margin: 4px 0; padding-left: 20px;">
-    <li>Promtail runs inside a container</li>
-    <li>File is mounted: <code>/home/vbox/logs/opnsense.log</code> → <code>/var/log/opnsense.log</code></li>
-    <li>Only the container path is visible to Promtail</li>
-  </ul>
-  <div style="margin: 8px 0 4px;"><strong>Symptom if wrong</strong></div>
-  <ul style="margin: 4px 0; padding-left: 20px;">
-    <li>“No labels received” in Grafana</li>
-    <li>Promtail logs show host path instead of <code>/var/log/...</code></li>
-  </ul>
-  <div style="margin: 8px 0 4px;"><strong>Fix action</strong></div>
-  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>podman-compose down
-podman-compose up -d</code></pre>
-</div>
 
 ### 6.5 Create Docker Compose File
 
 `[debian]`:
 
 ```bash
-cat > docker-compose.yml << 'EOF'
-version: "3"
-
+cat > ~/lab/siem/compose.yaml << 'EOF'
 services:
   loki:
-    image: grafana/loki:2.9.0
-    user: "0:0"
+    image: grafana/loki:2.9.8
+    container_name: loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - ./loki/data:/loki
     ports:
       - "3100:3100"
-    volumes:
-      - ./loki-config.yaml:/etc/loki/local-config.yaml
-      - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
-    restart: unless-stopped
 
   promtail:
-    image: docker.io/grafana/promtail:2.9.0
+    image: grafana/promtail:2.9.8
+    container_name: promtail
+    command: -config.file=/etc/promtail/config.yaml
     volumes:
-      - ./promtail-config.yaml:/etc/promtail/config.yml
-      - /home/vbox/logs/opnsense.log:/var/log/opnsense.log:ro
-    command: -config.file=/etc/promtail/config.yml
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - ~/lab/logs/opnsense.log:/var/log/opnsense.log:ro
     depends_on:
       - loki
-    restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:10.0.0
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana-data:/var/lib/grafana
     ports:
       - "3000:3000"
-    environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-      - GF_AUTH_DISABLE_LOGIN_FORM=false
-    volumes:
-      - grafana_data:/var/lib/grafana
     depends_on:
       - loki
-    restart: unless-stopped
-
-volumes:
-  loki_data:
-  grafana_data:
 EOF
 ```
 
@@ -458,79 +404,74 @@ EOF
 ```bash
 cd ~/lab/siem
 podman-compose up -d
+podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-Wait 30 seconds then check:
-
-```bash
-podman ps
-```
-
-Expected: loki, promtail, and grafana containers are running.
+Expected: `loki`, `promtail`, `grafana` are running.
 
 #### if Loki fails with permission errors
 
+`[debian]`:
+
 ```bash
-podman logs siem_loki_1
-# ctrl+C immediately, then check if its volume ownership issue, then proceed with this
+mkdir -p ~/lab/siem/loki/data ~/lab/siem/grafana-data
+chmod -R 777 ~/lab/siem/loki/data ~/lab/siem/grafana-data
 podman-compose down
-rm -rf ~/.local/share/containers/storage/volumes/<project>_loki_data
 podman-compose up -d
 ```
 
 ### 6.7 Access Grafana
 
-Open in browser on your Windows host: `http://192.168.50.1:3000` or `http://<Debian-LAN-IP>:3000`.
-
-Note: you may need to access via the Debian IP if OPNsense NAT is not forwarding port 3000.
-
-Default credentials: admin / admin (change on first login).
+Open `http://192.168.50.2:3000` and log in with `admin/admin`.
 
 ### 6.8 Add Loki Data Source in Grafana
 
-1. Go to Configuration (gear icon) > Data Sources.
-2. Click Add data source.
-3. Select Loki.
-4. URL = `http://loki:3100`.
-5. Click Save and Test.
+1. Open **Connections > Data Sources > Add data source**.
+2. Select Loki.
+3. URL: `http://loki:3100`.
+4. Save and test.
 
-Expected: connection successful.
+Expected: data source test is successful.
 
 ### 6.9 Create a Basic Log Dashboard in Grafana
 
-1. Click + > Dashboard > Add panel.
-2. Select Loki as the data source.
-3. In the query field, enter: `{job="opnsense"}`.
-4. Set visualization to Logs.
-5. Save the dashboard as OPNsense Logs.
+1. Add a panel with Loki query `{job="opnsense"}`.
+2. Set visualization to logs.
+3. Save dashboard.
+
+Expected: firewall logs appear when traffic is generated.
 
 ---
 
 ## 7. Deploy the Debian Control Plane
 
-The control API and the dashboard now live on Debian, not inside the Ubuntu container. Ubuntu stays the target, log receiver, and ML execution node.
-
 ### 7.1 Copy the Real Control API Files to Debian
 
-The canonical files are now in the workspace:
-
-1. `control-api/app.py`
-2. `control-api/requirements.txt`
-3. `kali-scenarios/*.sh`
-
-If you use a VirtualBox shared folder, copy them from the shared mount into Debian.
-
-`[debian]`:
+`[debian]` detect repo path automatically and copy canonical files.
 
 ```bash
-mkdir -p ~/lab/control-api ~/lab/kali-scenarios
-cp /path/to/shared/test/control-api/app.py ~/lab/control-api/app.py
-cp /path/to/shared/test/control-api/requirements.txt ~/lab/control-api/requirements.txt
-cp /path/to/shared/test/kali-scenarios/*.sh ~/lab/kali-scenarios/
-chmod +x ~/lab/kali-scenarios/*.sh
-```
+REPO_SYNC=""
+for p in /media/sf_Debian-NGFW "$HOME/Desktop/test" /mnt/hgfs/Debian-NGFW; do
+  if [ -d "$p/control-api" ] && [ -d "$p/kali-scenarios" ]; then
+    REPO_SYNC="$p"
+    break
+  fi
+done
 
-If you do not use a shared folder, use `scp`, Git, or paste the files manually.
+if [ -z "$REPO_SYNC" ]; then
+  echo "Could not locate synced repo path on Debian." >&2
+  exit 1
+fi
+
+echo "Using REPO_SYNC=$REPO_SYNC"
+mkdir -p ~/lab/control-api/scripts ~/lab/kali-scenarios ~/lab/dashboard
+cp "$REPO_SYNC/control-api/app.py" ~/lab/control-api/app.py
+cp "$REPO_SYNC/control-api/requirements.txt" ~/lab/control-api/requirements.txt
+cp "$REPO_SYNC/control-api/scripts/debian_smoke_test.sh" ~/lab/control-api/scripts/debian_smoke_test.sh
+cp "$REPO_SYNC/kali-scenarios"/*.sh ~/lab/kali-scenarios/
+cp "$REPO_SYNC/dashboard/index.html" ~/lab/dashboard/index.html
+chmod +x ~/lab/control-api/scripts/*.sh ~/lab/kali-scenarios/*.sh
+```
 
 ### 7.2 Copy Scenario Files into the Kali Container
 
@@ -538,40 +479,28 @@ If you do not use a shared folder, use `scp`, Git, or paste the files manually.
 
 ```bash
 sudo podman exec kali-lab mkdir -p /opt/lab/scenarios
-for file in ~/lab/kali-scenarios/*.sh; do
-  sudo podman cp "$file" kali-lab:/opt/lab/scenarios/
-done
+sudo podman cp ~/lab/kali-scenarios/. kali-lab:/opt/lab/scenarios/
 sudo podman exec kali-lab chmod +x /opt/lab/scenarios/*.sh
 sudo podman exec kali-lab ls -la /opt/lab/scenarios
 ```
 
-Expected: the copied scripts include the original four plus the extended set such as `udp_flood.sh`, `icmp_flood.sh`, `fin_scan.sh`, and `slow_http.sh`.
+Expected: all scenario scripts exist and are executable in Kali container.
 
 ### 7.3 Allow the Debian API Process to Execute Podman Commands
 
-Because your Kali and Ubuntu containers are managed with `sudo podman`, the API user on Debian needs passwordless access for the exact Podman exec path used by the API.
-
-`[debian]`:
+`[debian]` add sudoers entry for non-interactive podman exec calls.
 
 ```bash
-sudo visudo
+echo "$USER ALL=(root) NOPASSWD:/usr/bin/podman" | sudo tee /etc/sudoers.d/90-control-api-podman >/dev/null
+sudo chmod 440 /etc/sudoers.d/90-control-api-podman
+sudo visudo -cf /etc/sudoers.d/90-control-api-podman
 ```
 
-Add a rule like this for your Debian user:
-
-```text
-vbox ALL=(root) NOPASSWD:/usr/bin/podman exec *
-```
-
-If your Podman binary lives elsewhere, correct the path with:
-
-```bash
-command -v podman
-```
+Expected: visudo validation returns parsed OK.
 
 ### 7.4 Create and Start the Debian Control API
 
-`[debian]`:
+Create Python venv and install requirements:
 
 ```bash
 cd ~/lab/control-api
@@ -581,140 +510,212 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Set the required runtime variables. This removes the old fallback-token confusion and makes the log path explicit.
-
-`[debian]`:
+Prepare secrets files (do not hardcode secrets in markdown):
 
 ```bash
-export TOKEN='replace_with_a_long_random_token'
-# export TOKEN='RamyaBinduBansiDurbadalSirToken2022-2026'
-export API_TOKEN="$TOKEN"
-export KALI_CONTAINER='kali-lab'
-export SSH_USER='root'
-export TARGET_DEFAULT='192.168.50.10'
-export MAX_CONCURRENT_RUNS='3'
-export OPNSENSE_LOG_PATH="$HOME/logs/opnsense.log"
-export CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1'
-export KALI_IP_ASSIGN_CMD='echo assign $KALI_IP inside Kali here'
+mkdir -p ~/lab/secrets
+chmod 700 ~/lab/secrets
+```
+
+Create API token file:
+
+```bash
+TOKEN_VALUE="$(python3 - << 'PY'
+import secrets
+print(secrets.token_urlsafe(48))
+PY
+)"
+
+cat > ~/lab/secrets/api_token.env << EOF
+TOKEN='$TOKEN_VALUE'
+API_TOKEN='$TOKEN_VALUE'
+EOF
+chmod 600 ~/lab/secrets/api_token.env
+```
+
+Ensure OPNsense API secret file exists from OPNsense checklist section 13.5:
+
+```bash
+test -f ~/lab/secrets/opnsense_api.env && echo "opnsense_api.env found"
+```
+
+Create control API runtime env file:
+
+```bash
+cat > ~/lab/control-api/api.env << 'EOF'
+KALI_CONTAINER='kali-lab'
+TARGET_DEFAULT='192.168.50.10'
+TARGET_PROFILE='ubuntu-apache2'
+MAX_CONCURRENT_RUNS='3'
+OPNSENSE_LOG_PATH="$HOME/lab/logs/opnsense.log"
+TELEMETRY_EXCLUDED_IPS='192.168.50.1,192.168.50.2,192.168.60.1,192.168.60.2'
+DASHBOARD_ACTION_LOG_PATH="$HOME/lab/control-api/state/dashboard_actions.log"
+CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1,http://192.168.50.10:8888'
+OPNSENSE_BAN_ALIAS_TABLE='AUTO_BAN_IPS'
+OPNSENSE_KALI_ALIAS_TABLE='KALI_HOST'
+OPNSENSE_API_TIMEOUT_SECONDS='4'
+PODMAN_COMMAND_TIMEOUT_SECONDS='8'
+OPNSENSE_API_VERIFY_TLS='false'
+EOF
+chmod 600 ~/lab/control-api/api.env
+```
+
+Start in foreground once for immediate validation:
+
+```bash
+set -a
+source ~/lab/secrets/api_token.env
+source ~/lab/secrets/opnsense_api.env
+source ~/lab/control-api/api.env
+set +a
+
+cd ~/lab/control-api
+source .venv/bin/activate
 uvicorn app:app --host 0.0.0.0 --port 5000
 ```
 
-Notes:
-
-1. `MAX_CONCURRENT_RUNS` limits how many attacks can run at once from the dashboard or API. Start with `3` unless you have already verified the host can handle more.
-2. `KALI_IP_ASSIGN_CMD` is optional. Without it, the API falls back to `sudo podman exec kali-lab ... ip addr ...` inside the Kali container.
-3. Valid dashboard-assigned Kali addresses must stay inside `192.168.60.0/24`. `192.168.60.1` and `192.168.60.2` stay reserved.
-
-Test it locally from a second terminal before backgrounding it:
-
-`[debian]`:
+In another terminal, validate:
 
 ```bash
-curl http://127.0.0.1:5000/runs \
-  -H "X-API-Token: $TOKEN"
+curl http://127.0.0.1:5000/health
+curl http://127.0.0.1:5000/config -H "X-API-Token: $TOKEN"
 ```
 
-Expected: `{"runs": []}`.
+Stop foreground server with Ctrl+C after validation.
 
 ### 7.5 Run the API in the Background Without Losing the Token
 
-Do not start a second `uvicorn` process without the environment variables. That was the source of the earlier token confusion.
-
 `[debian]`:
 
 ```bash
-pkill -f "uvicorn app:app" || true
+set -a
+source ~/lab/secrets/api_token.env
+source ~/lab/secrets/opnsense_api.env
+source ~/lab/control-api/api.env
+set +a
+
 cd ~/lab/control-api
 source .venv/bin/activate
-nohup env \
-  API_TOKEN="$TOKEN" \
-  KALI_CONTAINER="$KALI_CONTAINER" \
-  SSH_USER="$SSH_USER" \
-  TARGET_DEFAULT="$TARGET_DEFAULT" \
-  MAX_CONCURRENT_RUNS="$MAX_CONCURRENT_RUNS" \
-  OPNSENSE_LOG_PATH="$OPNSENSE_LOG_PATH" \
-  CORS_ALLOWED_ORIGINS="$CORS_ALLOWED_ORIGINS" \
-  KALI_IP_ASSIGN_CMD="$KALI_IP_ASSIGN_CMD" \
-  uvicorn app:app --host 0.0.0.0 --port 5000 > ~/lab/control-api/api.log 2>&1 &
+nohup uvicorn app:app --host 0.0.0.0 --port 5000 > ~/lab/control-api/api.log 2>&1 &
 echo $! > ~/lab/control-api/api.pid
+sleep 1
+tail -n 20 ~/lab/control-api/api.log
 ```
 
-To stop it later:
+Stop later:
+
+```bash
+kill "$(cat ~/lab/control-api/api.pid)"
+```
+
+### 7.6 Verify OPNsense REST Wiring Before Dashboard Use
 
 `[debian]`:
 
 ```bash
-kill $(cat ~/lab/control-api/api.pid)
+set -a
+source ~/lab/secrets/api_token.env
+set +a
+
+curl http://127.0.0.1:5000/config -H "X-API-Token: $TOKEN" | jq
 ```
 
-### 7.6 Optional Firewall Hooks for Progressive Bans
+Expected fields:
 
-The new API supports `/firewall/ban`, `/firewall/unban`, and automatic expiry. To make those buttons actually change OPNsense, wire the API to either an OPNsense API call or an SSH helper script.
+1. `firewall_integration_mode` is `opnsense-rest`.
+2. `opnsense_api_enabled` is `true`.
+3. `default_target_profile` is `ubuntu-apache2`.
+4. `dashboard_action_log_path` is present.
+5. `telemetry_excluded_ips` includes infra IP list.
 
-Example pattern:
-
-`[debian]`:
+Run hook self-test:
 
 ```bash
-export FIREWALL_BAN_CMD='echo add $BAN_IP to OPNsense alias here'
-export FIREWALL_UNBAN_CMD='echo remove $BAN_IP from OPNsense alias here'
+curl -X POST http://127.0.0.1:5000/firewall/hook-test \
+  -H "X-API-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip":"192.168.60.222","reason":"ubuntu_preflight_hook_test"}'
 ```
 
-Until you replace those placeholders with a real OPNsense integration, the dashboard still tracks bans in record-only mode.
+Expected: returns `status: ok` with ban/unban mode `opnsense-rest`.
 
 ### 7.7 New Control Endpoints To Test
 
-The current control API also exposes:
-
-1. `POST /runs/stop-all` for the dashboard master stop button.
-2. `GET /kali/network` to show the currently assigned Kali address and reserved addresses.
-3. `POST /kali/network` to reassign Kali inside `192.168.60.0/24`.
-
-Quick checks:
-
 `[debian]`:
 
 ```bash
-curl http://127.0.0.1:5000/kali/network \
-  -H "X-API-Token: $TOKEN"
-```
+curl http://127.0.0.1:5000/runs -H "X-API-Token: $TOKEN"
 
-```bash
+curl -X POST http://127.0.0.1:5000/launch \
+  -H "X-API-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"scenario":"tcp_syn_burst","target_ip":"192.168.50.10"}'
+
 curl -X POST http://127.0.0.1:5000/runs/stop-all \
   -H "X-API-Token: $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"reason":"manual_test"}'
+  -d '{"reason":"ubuntu_checklist_stop_all"}'
+
+curl -X POST http://127.0.0.1:5000/kali/network \
+  -H "X-API-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip":"192.168.60.20"}'
 ```
 
-If you want the dashboard to change Kali's IP directly, replace the placeholder `KALI_IP_ASSIGN_CMD` or let the default `podman exec` path handle it.
+Expected:
+
+1. Launch returns `run_id` and `running`.
+2. stop-all returns count of stopped runs.
+3. kali/network returns updated IP and sync mode.
 
 ### 7.8 Place Dashboard HTML
 
-Copy `dashboard/index.html` from your Windows host into the Ubuntu container or serve it from Debian.
+`[debian]` host dashboard quickly for lab use:
 
-Option A: Serve from Debian directly:
+```bash
+cd ~/lab/dashboard
+nohup python3 -m http.server 8888 > ~/lab/dashboard/http.log 2>&1 &
+echo $! > ~/lab/dashboard/http.pid
+```
+
+Stop later:
+
+```bash
+kill "$(cat ~/lab/dashboard/http.pid)"
+```
+
+### 7.9 Run One-Shot Debian Smoke Test
 
 `[debian]`:
 
 ```bash
-cd ~/Desktop/test/dashboard
-python3 -m http.server 8888
+set -a
+source ~/lab/secrets/api_token.env
+set +a
+
+cd ~/lab/control-api/scripts
+API_TOKEN="$TOKEN" ./debian_smoke_test.sh --api-base http://127.0.0.1:5000
 ```
 
-Open on Windows host: `http://<Debian-IP>:8888`.
+Expected: script prints pass/warn/fail summary and exits non-zero only for hard failures.
 
-Option B: Copy into Ubuntu and serve:
+### 7.10 Manual Dashboard Action Log Workflow
+
+`[debian]` inspect and clear action audit file:
 
 ```bash
-mkdir -p ~/lab/dashboard
-# Copy the file via podman cp or mount a volume
+set -a
+source ~/lab/control-api/api.env
+set +a
+
+wc -l "$DASHBOARD_ACTION_LOG_PATH"
+tail -n 20 "$DASHBOARD_ACTION_LOG_PATH"
 ```
 
-`[debian]`:
+Manual clear:
 
 ```bash
-podman cp ~/Desktop/test/dashboard/index.html ubuntu-lab:/root/lab/dashboard/
-podman exec ubuntu-lab bash -c "cd /root/lab/dashboard && python3 -m http.server 8888 &"
+: > "$DASHBOARD_ACTION_LOG_PATH"
 ```
 
 ---
@@ -723,29 +724,24 @@ podman exec ubuntu-lab bash -c "cd /root/lab/dashboard && python3 -m http.server
 
 ### 8.1 Open Dashboard in Browser
 
-Open `http://<Debian-IP>:8888` on your Windows host.
+Open `http://192.168.50.2:8888`.
 
 ### 8.2 Test in Mock Mode
 
-1. Confirm Mock Mode toggle is ON (default).
-2. Click the Telemetry tab.
-3. Confirm charts load with mock data.
-4. Click the ML Analytics tab.
-5. Confirm ML charts load.
+1. Enable Mock mode.
+2. Launch one scenario in UI.
+3. Validate table, counters, and charts update with mock data.
 
 ### 8.3 Test in Live Mode
 
-1. Enter API Base URL = `http://<Debian-IP>:5000`.
-2. Enter API Token = the token you set.
-3. Turn off Mock Mode.
-4. Click Attack Control tab.
-5. Expand an attack row, set the shared target IP if needed, and click Launch on one or more rows.
-6. Expected: runs appear in the Active And Recent Runs table with status `running` while live and later transition to `completed` or `failed` automatically.
-7. Verify the dashboard blocks new launches once the `MAX_CONCURRENT_RUNS` cap is reached.
-8. Use the row stop action and the master stop button to verify both kill-switch paths.
-9. Use the Kali network panel to test reassignment inside `192.168.60.0/24`.
-10. If you readdress Kali, update any OPNsense aliases that were pinned to the old source IP.
-11. Use the firewall controls to test 1 hour, 5 hour, 10 hour, and 24 hour progressive bans.
+1. Disable Mock mode.
+2. Set API Base URL to `http://192.168.50.2:5000`.
+3. Set API token value from `~/lab/secrets/api_token.env`.
+4. Launch one scenario.
+5. Validate run table updates and stop-all works.
+6. Reassign Kali IP and verify operation succeeds.
+7. Use containment ban/release and verify action log entries are appended.
+8. Verify telemetry counters update and infra IP noise is excluded.
 
 ---
 
@@ -755,31 +751,41 @@ Open `http://<Debian-IP>:8888` on your Windows host.
 
 ### 9.1 Create ML Directory
 
+`[debian]`:
+
 ```bash
+REPO_SYNC=""
+for p in /media/sf_Debian-NGFW "$HOME/Desktop/test" /mnt/hgfs/Debian-NGFW; do
+  if [ -f "$p/ml/parse_logs.py" ]; then
+    REPO_SYNC="$p"
+    break
+  fi
+done
+
+if [ -z "$REPO_SYNC" ]; then
+  echo "Could not locate ml scripts in synced repo path." >&2
+  exit 1
+fi
+
 mkdir -p ~/lab/ml
+cp "$REPO_SYNC/ml"/*.py ~/lab/ml/
+cp "$REPO_SYNC/ml/requirements.txt" ~/lab/ml/
 cd ~/lab/ml
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install pandas numpy scikit-learn matplotlib seaborn joblib pyarrow
+pip install -r requirements.txt
 ```
-
-Prefer using the canonical workspace files under `ml/` now:
-
-1. `ml/parse_logs.py`
-2. `ml/train.py`
-3. `ml/infer.py`
-4. `ml/requirements.txt`
-
-Copy them to Debian or Ubuntu the same way you copied the control API files.
 
 ### 9.2 Verify Installs
 
-```bash
-python3 -c "import sklearn; print(sklearn.__version__)"
-```
+`[debian]`:
 
-Expected: version number printed.
+```bash
+cd ~/lab/ml
+source .venv/bin/activate
+python -c "import pandas, numpy, sklearn, joblib; print('ml_deps_ok')"
+```
 
 ---
 
@@ -787,22 +793,23 @@ Expected: version number printed.
 
 ### 10.1 Export OPNsense Log to CSV for Training
 
-The older inline parser hardcoded source and destination IPs. Use the standalone `ml/parse_logs.py` file instead, because it extracts IPs, ports, protocol, and action dynamically from the log lines.
+`[debian]`:
 
 ```bash
+cd ~/lab/ml
 source .venv/bin/activate
-python3 ~/lab/ml/parse_logs.py --log ~/logs/opnsense.log --out ~/lab/ml/features.csv
+python parse_logs.py --log ~/lab/logs/opnsense.log --out ~/lab/ml/features.csv
+wc -l ~/lab/ml/features.csv
+head -n 5 ~/lab/ml/features.csv
 ```
 
 ### 10.2 Manually Label Rows Using run_id Log
 
-Open `features.csv` in nano and update the `label` column for rows that correspond to known attack windows:
+1. Open `~/lab/ml/features.csv` in spreadsheet editor.
+2. Set `label` values for known runs (for example: `benign`, `scan`, `web_attack`, `brute_force`, `flood`).
+3. Save back to `~/lab/ml/features.csv`.
 
-```text
-label values: benign, scan, web_attack, brute_force, flood, sql_injection
-```
-
-Use the run_id timestamps from the Kali run log to identify attack windows.
+Expected: CSV keeps original columns and has labeled rows.
 
 ---
 
@@ -810,12 +817,16 @@ Use the run_id timestamps from the Kali run log to identify attack windows.
 
 ### 11.1 Create and Run Training Script
 
-Use the standalone `ml/train.py` file from the workspace. It no longer assumes a single attacker IP and includes `src_ip` and `dst_ip` as categorical features.
+`[debian]`:
 
 ```bash
+cd ~/lab/ml
 source .venv/bin/activate
-python3 ~/lab/ml/train.py
+python train.py
+ls -la ~/lab/ml/*.joblib ~/lab/ml/latest_results.json
 ```
+
+Expected: model files and `latest_results.json` are created.
 
 ---
 
@@ -823,29 +834,31 @@ python3 ~/lab/ml/train.py
 
 ### 12.1 Create Inference Script
 
-Use the standalone `ml/infer.py` file from the workspace. It preserves the parsed source and destination IPs instead of replacing them with fixed values.
+This repo already ships `infer.py`. Run it directly.
+
+`[debian]`:
 
 ```bash
+cd ~/lab/ml
 source .venv/bin/activate
-python3 ~/lab/ml/infer.py
+python infer.py
 ```
 
 ### 12.2 Verify Predictions File
 
-```bash
-cat ~/lab/ml/predictions.json | python3 -m json.tool | head -40
-```
+`[debian]`:
 
-Expected: JSON array with prediction records.
+```bash
+ls -la ~/lab/ml/predictions.json
+head -n 20 ~/lab/ml/predictions.json
+```
 
 ### 12.3 Verify ML Data Appears in Dashboard
 
-1. Open dashboard in browser.
-2. Turn off Mock Mode.
-3. Click ML Analytics tab.
-4. Click Refresh.
-
-Expected: real prediction data loads instead of mock data.
+1. Open dashboard ML tab.
+2. Confirm summary cards load.
+3. Confirm recent prediction rows appear.
+4. Confirm no API errors in browser dev tools.
 
 ---
 
@@ -853,178 +866,87 @@ Expected: real prediction data loads instead of mock data.
 
 ### 13.1 Restart API with ML Data Ready
 
+`[debian]`:
+
 ```bash
-kill $(cat ~/lab/control-api/api.pid) 2>/dev/null || true
+kill "$(cat ~/lab/control-api/api.pid)" || true
+set -a
+source ~/lab/secrets/api_token.env
+source ~/lab/secrets/opnsense_api.env
+source ~/lab/control-api/api.env
+set +a
+
 cd ~/lab/control-api
 source .venv/bin/activate
-nohup env \
-  API_TOKEN="$TOKEN" \
-  KALI_CONTAINER="$KALI_CONTAINER" \
-  SSH_USER="$SSH_USER" \
-  TARGET_DEFAULT="$TARGET_DEFAULT" \
-  OPNSENSE_LOG_PATH="$OPNSENSE_LOG_PATH" \
-  CORS_ALLOWED_ORIGINS="$CORS_ALLOWED_ORIGINS" \
-  uvicorn app:app --host 0.0.0.0 --port 5000 > api.log 2>&1 &
-echo $! > api.pid
+nohup uvicorn app:app --host 0.0.0.0 --port 5000 > ~/lab/control-api/api.log 2>&1 &
+echo $! > ~/lab/control-api/api.pid
 ```
 
 ### 13.2 Run a Final Scenario and Watch Pipeline End-to-End
 
-From Kali:
+`[debian]`:
 
 ```bash
-curl -X POST http://<Debian-IP>:5000/launch \
+set -a
+source ~/lab/secrets/api_token.env
+set +a
+
+curl -X POST http://127.0.0.1:5000/launch \
   -H "X-API-Token: $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"scenario":"web_scan","target_ip":"192.168.50.10"}'
 ```
 
-While it runs:
+Expected:
 
-1. Watch OPNsense Alerts page for new events.
-2. Watch Grafana Loki dashboard for new log lines.
-3. After completion, rerun inference: `python3 ~/lab/ml/infer.py`.
-4. Refresh ML Analytics tab in dashboard.
+1. Run appears in dashboard control tab.
+2. Telemetry updates in near real time.
+3. ML tab continues to load predictions summary.
 
 ---
 
 ## 14. Migration: Deploy Dashboard to Free Web Hosting
 
-This section covers publishing the static dashboard HTML file so it can be accessed from the internet, with the FastAPI backend exposed via Cloudflare Tunnel.
-
 ### 14.1 Prepare Cloudflare Tunnel for FastAPI (on Debian)
 
-`[debian]`:
-
-```bash
-# Install cloudflared
-wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-sudo dpkg -i cloudflared-linux-amd64.deb
-
-# Start a quick tunnel to the control API on Debian (port 5000)
-cloudflared tunnel --url http://127.0.0.1:5000
-```
-
-The command prints a public URL like `https://random-words.trycloudflare.com`.
-
-Copy that URL. You will use it as the API Base URL in the dashboard.
+Optional if remote demo is required. Keep API protected and authenticated.
 
 ### 14.2 Update CORS in Control API
 
-In `~/lab/control-api/app.py`, update the `allow_origins` list to include your GitHub Pages URL.
-
-Replace:
-
-```python
-"https://yourusername.github.io",
-```
-
-With your actual GitHub Pages URL. Then restart the API.
+1. Add the hosted dashboard origin to `CORS_ALLOWED_ORIGINS` in `~/lab/control-api/api.env`.
+2. Restart API.
 
 ### 14.3 Deploy Dashboard to GitHub Pages
 
-On your Windows host:
-
-1. Create a new GitHub repository (public or private with Pages enabled).
-2. Create a folder `docs` in the repository.
-3. Copy `dashboard/index.html` into `docs/index.html`.
-4. Push to GitHub.
-5. Go to repository Settings > Pages.
-6. Set source to Deploy from a branch.
-7. Select branch main and folder /docs.
-8. Save.
-
-Access at: `https://yourusername.github.io/your-repo-name/`.
+1. Push `dashboard/index.html` to a Pages-enabled repository.
+2. Enable Pages in repo settings.
 
 ### 14.4 Update API URL in the Live Dashboard
 
-When you open the dashboard on GitHub Pages:
-
-1. In the Config Bar, set API Base URL to your Cloudflare Tunnel URL.
-2. Enter your API token.
-3. Turn off Mock Mode.
-4. Test the Launch Scenario button.
+Set API Base URL in dashboard UI to your tunnel/public endpoint.
 
 ### 14.5 Alternative: Deploy to Netlify
 
-1. Go to netlify.com and log in.
-2. Click Sites > Drag and drop site folder.
-3. Drag the `dashboard/` folder from your Windows machine.
-4. Netlify gives you a URL like `https://yourname.netlify.app`.
-5. Update CORS and API URL as above.
+Upload the same dashboard file and use the same API endpoint approach.
 
 ### 14.6 Security Checklist Before Going Public
 
-1. Remove the `"*"` from the `allow_origins` CORS list in the API.
-2. Use a strong API token (20+ random characters, not a dictionary word).
-3. Cloudflare Tunnel exposes only the API, not the log files, SIEM internals, or Kali.
-4. Do not expose OPNsense web UI or Grafana directly.
-5. Cloudflare Tunnel URL changes each time you restart without a named tunnel. Use a named tunnel for stable URL.
+1. Keep API token required.
+2. Do not expose OPNsense credentials.
+3. Do not expose internal log storage directly.
+4. Remove temporary public endpoints after demo.
 
 ---
 
 ## 15. Ubuntu Minimum Success Checklist
 
-You are done when all are true:
+You are done only when all are true:
 
-1. Apache responds on port 80.
-2. rsyslog receives logs from OPNsense on UDP 514.
-3. OPNsense logs are written to /var/log/opnsense.log.
-4. Grafana is accessible and shows OPNsense log data.
-5. Control API responds and accepts launch requests.
-6. All four scenario scripts are reachable from the API.
-7. features.csv contains parsed log data.
-8. Isolation Forest model is trained and saved.
-9. Random Forest model is trained if labeled data exists.
-10. Predictions are written to predictions.json.
-11. Dashboard shows real data in live mode.
-12. Migration path to GitHub Pages or Netlify is tested.
-
----
----
-
-## Appendix
-
-### Appendix 1
-
-<div style="border: 1px solid var(--vscode-widget-border, #cbd5e1); background: var(--vscode-editor-background, #f8fafc); color: var(--vscode-editor-foreground, #0f172a); padding: 14px; border-radius: 8px; margin: 16px 0; font-family: inherit;">
-  <div style="font-weight: 600; margin-bottom: 8px;">📌 Small Detour: The "Quote Trap" — Shell vs. Python Syntax</div>
-  <div style="margin-bottom: 8px;"><strong>Context:</strong> When writing Python files from Fish/Bash using <code>bash -c</code>, you are nesting three layers of syntax: <strong>Fish → Bash → Python</strong>. Mismanaging quotes causes silent failures or syntax errors.</div>
-  
-  <div style="margin: 12px 0 4px;"><strong>1. The Golden Rule: Use Double Quotes for the Outer Wrapper</strong></div>
-  <div style="margin-bottom: 4px;">Wrap your entire <code>bash -c</code> command in double quotes (<code>"..."</code>). This allows single quotes (<code>'</code>) to exist freely inside your Python code without escaping.</div>
-  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>bash -c "cat > app.py << 'PYEOF'
-# Single quotes are safe here!
-msg = 'Hello World'
-print(msg)
-PYEOF"</code></pre>
-
-  <div style="margin: 12px 0 4px;"><strong>2. Handling Double Quotes in Python</strong></div>
-  <div style="margin-bottom: 4px;">If your Python code requires double quotes (e.g., <code>print("Hi")</code>), you must escape them with a backslash (<code>\</code>) because the outer shell wrapper is using double quotes.</div>
-  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code>bash -c "cat > app.py << 'PYEOF'
-# Escape internal double quotes
-print(\"It works!\")
-PYEOF"</code></pre>
-
-  <div style="margin: 12px 0 4px;"><strong>3. The "Quote Sandwich" (Advanced/POSIX Standard)</strong></div>
-  <div style="margin-bottom: 4px;">If you must use single quotes for the outer wrapper, you cannot simply use <code>\'</code> inside. You must use the <code>'\''</code> sequence to "pause" quoting, insert a literal quote, and resume.</div>
-  <ul style="margin: 4px 0; padding-left: 20px;">
-    <li><code>'</code> : End current single-quoted string.</li>
-    <li><code>\'</code> : Insert a literal single quote.</li>
-    <li><code>'</code> : Start new single-quoted string.</li>
-  </ul>
-  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code># Complex but 100% reliable
-bash -c 'echo '\''It'\''s working'\'''</code></pre>
-
-  <div style="margin: 12px 0 4px;"><strong>❌ Common Pitfall: The "Simple" Backslash</strong></div>
-  <div style="margin-bottom: 4px;">Using <code>\'</code> inside a single-quoted <code>bash -c</code> string is unreliable in Fish/Bash. It may work for simple words but fails when quotes are nested or used as delimiters (like in Heredocs).</div>
-  <pre style="background: var(--vscode-editor-selectionBackground, #e2e8f0); padding: 8px; border-radius: 4px; overflow-x: auto;"><code># ⚠️ Risky: May break if internal quotes exist
-bash -c 'cat > app.py << \'PYEOF\' ... PYEOF'</code></pre>
-
-  <div style="margin: 12px 0 4px;"><strong>💡 Recommendation</strong></div>
-  <ul style="margin: 4px 0; padding-left: 20px;">
-    <li><strong>For small snippets:</strong> Use <code>bash -c "..."</code> (Double Quote Wrapper).</li>
-    <li><strong>For complex files:</strong> Use <code>nano app.py</code> or <code>vim app.py</code> to avoid shell quoting entirely.</li>
-    <li><strong>For automation scripts:</strong> Use the <code>'\''</code> method for maximum POSIX compatibility.</li>
-  </ul>
-</div>
+1. Ubuntu target responds on expected service ports.
+2. OPNsense logs are collected and visible in Loki/Grafana.
+3. Control API starts with no runtime errors.
+4. `/config` shows `opnsense-rest` integration enabled.
+5. Hook test and Kali reassign operations succeed.
+6. Dashboard live mode can launch/stop runs and view telemetry.
+7. ML pipeline produces `latest_results.json` and `predictions.json`.
+8. End-to-end final scenario can be observed in control + telemetry + ML views.

@@ -20,6 +20,8 @@
       --red: #f85149;
       --yellow: #d29922;
       --orange: #e3b341;
+      --red-team-tint: rgba(248, 81, 73, 0.05);
+      --blue-team-tint: rgba(88, 166, 255, 0.05);
       --login-bg: rgba(5, 8, 14, 0.72);
       --logo-filter: brightness(0) invert(1);
     }
@@ -35,6 +37,8 @@
       --red: #b11f27;
       --yellow: #946300;
       --orange: #9b5800;
+      --red-team-tint: rgba(177, 31, 39, 0.06);
+      --blue-team-tint: rgba(0, 95, 200, 0.06);
       --login-bg: rgba(210, 223, 238, 0.62);
       --logo-filter: none;
     }
@@ -164,6 +168,66 @@
       display: flex; justify-content: flex-end; align-items: center;
       gap: 0.6rem; margin-bottom: 0.75rem;
     }
+    .telem-row {
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .telem-left {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      min-height: 28px;
+      flex: 1;
+      min-width: 0;
+    }
+    .telem-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.55rem;
+      min-height: 28px;
+      white-space: nowrap;
+    }
+    .telem-counter-strip {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      min-width: 0;
+    }
+    .telem-pill {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      border-radius: 999px;
+      font-size: 0.68rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      line-height: 1;
+      padding: 0.25rem 0.52rem;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.28rem;
+    }
+    .telem-pill .value {
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+    .telem-pill.alerts .value,
+    .telem-pill.blocked .value,
+    .telem-pill.banned .value {
+      color: var(--red);
+    }
+    .telem-pill.high .value {
+      color: var(--yellow);
+    }
+    .telem-pill.flows .value {
+      color: var(--blue);
+    }
     .btn-sm {
       background: none; border: 1px solid var(--border);
       color: var(--muted); padding: 0.2rem 0.65rem;
@@ -190,6 +254,16 @@
     .panel {
       background: var(--card); border: 1px solid var(--border);
       border-radius: 8px; padding: 0.72rem; margin-bottom: 0.75rem;
+    }
+    #tab-control .panel,
+    #tab-control .card {
+      background: linear-gradient(var(--red-team-tint), var(--red-team-tint)), var(--card);
+    }
+    #tab-telemetry .panel,
+    #tab-telemetry .card,
+    #tab-ml .panel,
+    #tab-ml .card {
+      background: linear-gradient(var(--blue-team-tint), var(--blue-team-tint)), var(--card);
     }
     .panel-title {
       font-size: 0.7rem; color: var(--muted);
@@ -269,6 +343,13 @@
       border-radius: 4px; font-size: 0.88rem; font-family: inherit;
       margin-bottom: 0.5rem; appearance: none;
     }
+    .chart-bucket-select {
+      width: auto;
+      min-width: 84px;
+      margin-bottom: 0;
+      padding: 0.2rem 0.45rem;
+      font-size: 0.74rem;
+    }
     select:focus { outline: none; border-color: var(--blue); }
     .scen-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.5; }
     .btn-launch {
@@ -284,6 +365,110 @@
       border: 1px solid var(--border); border-radius: 4px;
       padding: 0.65rem; font-size: 0.75rem; color: var(--muted);
       min-height: 56px; word-break: break-word; white-space: pre-wrap;
+    }
+    .terminal-controls {
+      margin-top: 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.65rem;
+    }
+    .telemetry-ban-controls {
+      width: min(520px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.65rem;
+      display: grid;
+      gap: 0.6rem;
+    }
+    .telem-ban-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 0.75rem;
+    }
+    .telemetry-ban-controls .field-block {
+      min-width: 118px;
+      flex: 1;
+    }
+    .telemetry-ban-controls .field-block.tight {
+      max-width: 150px;
+      flex: 0.65;
+    }
+    .telemetry-ban-controls .control-row {
+      align-items: flex-end;
+    }
+    .telemetry-ban-controls .text-input,
+    .telemetry-ban-controls select {
+      margin-bottom: 0;
+    }
+    @media (max-width: 900px) {
+      .telem-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .telem-right {
+        width: 100%;
+        justify-content: space-between;
+      }
+      .telem-counter-strip {
+        width: 100%;
+      }
+      .telemetry-ban-controls {
+        width: 100%;
+      }
+      .telem-ban-row {
+        justify-content: stretch;
+      }
+    }
+    .ban-window {
+      min-height: 68px;
+      max-height: 132px;
+      overflow-y: auto;
+      white-space: normal;
+      line-height: 1.35;
+    }
+    .ban-item {
+      padding: 0.4rem 0;
+      border-bottom: 1px dashed var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .ban-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .ban-item.released {
+      animation: ban-fade-out 5s linear forwards;
+    }
+    .ban-item-text {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .ban-release-btn {
+      border: 1px solid var(--green);
+      color: var(--green);
+      background: rgba(63,185,80,.08);
+      border-radius: 4px;
+      padding: 0.12rem 0.45rem;
+      font-size: 0.68rem;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .ban-release-btn:hover {
+      background: rgba(63,185,80,.16);
+    }
+    .ban-release-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    @keyframes ban-fade-out {
+      from { opacity: 1; }
+      to { opacity: 0.08; }
     }
     .stack { display: grid; gap: 0.75rem; }
     .field-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.25rem; display: block; }
@@ -315,6 +500,7 @@
       padding: 0.55rem; font-size: 0.74rem; color: var(--muted); min-height: 42px; white-space: pre-wrap;
     }
     .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.7rem; }
+    #tab-control .panel-grid { grid-template-columns: 1fr; }
     @media (max-width: 950px) { .panel-grid { grid-template-columns: 1fr; } }
     .catalog-name-btn {
       background: none; border: none; color: var(--blue); cursor: pointer;
@@ -435,6 +621,16 @@
   </div>
   <div class="status-bar">
     <button class="theme-btn" id="theme-toggle" title="Toggle theme">🌙</button>
+    <label for="refresh-ms">Auto</label>
+    <select id="refresh-ms" class="chart-bucket-select" title="Auto refresh interval">
+      <option value="500">0.5s</option>
+      <option value="1000">1s</option>
+      <option value="2000">2s</option>
+      <option value="3000">3s</option>
+      <option value="5000" selected>5s</option>
+      <option value="10000">10s</option>
+      <option value="30000">30s</option>
+    </select>
     <span><span class="dot offline" id="conn-dot"></span> <span id="conn-label">Mock Mode</span></span>
     <span id="last-refresh"></span>
   </div>
@@ -481,6 +677,8 @@
               <tr>
                 <th>Attack</th>
                 <th>Category</th>
+                <th>OSI Layer</th>
+                <th>Severity Hint</th>
                 <th>Active</th>
                 <th>Target</th>
                 <th>Actions</th>
@@ -490,6 +688,12 @@
           </table>
         </div>
         <div class="launch-out" id="launch-out">Ready. Expand an attack row for the description, then launch up to the configured concurrent cap.</div>
+        <div class="terminal-controls">
+          <div class="panel-title">Red Team Ban Watch</div>
+          <div class="stack">
+            <div class="meta-box ban-window" id="red-ban-box">No active red-team bans.</div>
+          </div>
+        </div>
       </div>
 
       <div class="control-rail">
@@ -497,7 +701,7 @@
           <div class="panel-title">Launch & Limits</div>
           <div class="stack">
             <div>
-              <label class="field-label" for="target-ip">Target IP</label>
+              <label class="field-label" for="target-ip">Target IP (Ubuntu Apache2)</label>
               <input class="text-input" id="target-ip" value="192.168.50.10" placeholder="192.168.50.10">
             </div>
             <div class="hint">Multiple attacks can run at once, but the API caps concurrency to protect the firewall and host.</div>
@@ -525,29 +729,6 @@
             <div class="meta-box" id="kali-network-box">Kali network state unknown.</div>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-title">Firewall Controls</div>
-        <div class="stack">
-          <div>
-            <label class="field-label" for="ban-ip">Offender IP</label>
-            <input class="text-input" id="ban-ip" value="192.168.60.10" placeholder="192.168.60.10">
-          </div>
-          <div>
-            <label class="field-label" for="ban-duration">Ban Duration</label>
-            <select id="ban-duration">
-              <option value="60">1 hour</option>
-              <option value="300">5 hours</option>
-              <option value="600">10 hours</option>
-              <option value="1440">24 hours</option>
-            </select>
-          </div>
-          <div class="control-row">
-            <button class="btn-ban" id="btn-ban">Apply Ban</button>
-            <button class="btn-unban" id="btn-unban">Release Ban</button>
-          </div>
-          <div class="meta-box" id="firewall-status-box">Firewall hook status unknown.</div>
-        </div>
-      </div>
       </div>
     </div>
 
@@ -569,35 +750,64 @@
           </table>
         </div>
       </div>
-      <div class="panel">
-        <div class="panel-title">Active Ban List</div>
-        <div class="table-wrap scroll-y rows-6">
-          <table>
-            <thead>
-              <tr>
-                <th>IP</th>
-                <th>Duration</th>
-                <th>Expires</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="ban-log-body"></tbody>
-          </table>
-        </div>
-      </div>
     </div>
   </div>
 
   <!-- ═══════════════════════════════════════ TELEMETRY ═══ -->
   <div class="tab-panel" id="tab-telemetry">
-    <div class="row-bar">
-      <button class="btn-sm" onclick="refreshTelemetry()">&#8635; Refresh</button>
-      <span id="telem-ts"></span>
+    <div class="row-bar telem-row">
+      <div class="telem-left">
+        <div class="telem-counter-strip">
+          <span class="telem-pill alerts">Alerts <span class="value" id="telem-total-alerts">0</span></span>
+          <span class="telem-pill blocked">Blocked <span class="value" id="telem-blocked">0</span></span>
+          <span class="telem-pill banned">Banned Drops <span class="value" id="telem-banned-drops">0</span></span>
+          <span class="telem-pill high">High Sev <span class="value" id="telem-high-sev">0</span></span>
+          <span class="telem-pill flows">Flows <span class="value" id="telem-active-flows">0</span></span>
+        </div>
+      </div>
+      <div class="telem-right">
+        <span id="telem-ts"></span>
+        <button class="btn-sm" onclick="refreshTelemetry()">&#8635; Refresh</button>
+      </div>
+    </div>
+    <div class="telem-ban-row">
+      <div class="telemetry-ban-controls">
+        <div class="panel-title">Blue Team Containment</div>
+        <div class="control-row">
+          <div class="field-block">
+            <label class="field-label" for="ban-ip">Offender IP</label>
+            <input class="text-input" id="ban-ip" value="192.168.60.10" placeholder="192.168.60.10">
+          </div>
+          <div class="field-block tight">
+            <label class="field-label" for="ban-duration">Ban Duration</label>
+            <select id="ban-duration">
+              <option value="60">1 hour</option>
+              <option value="300">5 hours</option>
+              <option value="600">10 hours</option>
+              <option value="1440">24 hours</option>
+            </select>
+          </div>
+          <button class="btn-ban" id="btn-ban">Apply Ban</button>
+          <button class="btn-unban" id="btn-unban">Release Ban</button>
+        </div>
+        <div class="meta-box" id="firewall-status-box">Firewall hook status unknown.</div>
+        <div class="meta-box ban-window" id="blue-ban-box">No active blue-team bans.</div>
+      </div>
     </div>
     <div class="cards" id="summary-cards"></div>
     <div class="grid-2">
       <div class="panel">
-        <div class="panel-title">Alerts Over Time (5 min buckets)</div>
+        <div class="panel-title-row">
+          <div class="panel-title">Alerts Over Time</div>
+          <select id="bucket-seconds" class="chart-bucket-select" title="Timeline bucket size">
+            <option value="30" selected>30s</option>
+            <option value="60">1m</option>
+            <option value="120">2m</option>
+            <option value="180">3m</option>
+            <option value="300">5m</option>
+          </select>
+        </div>
+        <div class="hint">Shows alert rate trend by bucket. Use 30s during short attack bursts to make the line shape visible.</div>
         <div class="chart-wrap"><canvas id="ch-timeline"></canvas></div>
       </div>
       <div class="panel">
@@ -616,7 +826,18 @@
       </div>
     </div>
     <div class="panel">
-      <div class="panel-title">Recent Events</div>
+      <div class="panel-title-row">
+        <div class="panel-title">Recent Events</div>
+        <select id="events-limit" class="chart-bucket-select" title="Recent event row count">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="350">350</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="5000">5000</option>
+        </select>
+      </div>
       <div class="table-wrap scroll-y rows-12">
         <table>
           <thead>
@@ -655,7 +876,18 @@
       </div>
     </div>
     <div class="panel">
-      <div class="panel-title">Recent ML Predictions</div>
+      <div class="panel-title-row">
+        <div class="panel-title">Recent ML Predictions</div>
+        <select id="ml-limit" class="chart-bucket-select" title="Recent ML row count">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="350">350</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="5000">5000</option>
+        </select>
+      </div>
       <div class="table-wrap scroll-y rows-12">
         <table>
           <thead>
@@ -683,13 +915,28 @@
 // ───────────────────────────────────────────────────────────
 const SCEN_DESCS = {
   tcp_syn_burst:       'Sends 500 TCP SYN packets to the target to simulate a SYN flood or port scan.',
-  web_scan:            'Runs Nikto probes and curl-based injection strings against the HTTP target.',
+  web_scan:            'Runs Nikto probes and curl-based injection strings against the Ubuntu Apache2 HTTP target.',
   ssh_bruteforce_sim:  'Issues 25 SSH login attempts in quick succession to simulate a brute force.',
-  sql_injection_sim:   'Sends SQLi payloads via HTTP to trigger SQL injection IDS signatures.',
+  sql_injection_sim:   'Sends SQLi payloads via Ubuntu Apache2 HTTP paths to trigger IDS signatures.',
   udp_flood:           'Sends a short UDP burst for L4 volumetric testing and rate-limit checks.',
   icmp_flood:          'Sends ICMP burst traffic to exercise L3 controls and telemetry visibility.',
   fin_scan:            'Runs a FIN scan to extend transport-layer reconnaissance coverage.',
-  slow_http:           'Opens slow HTTP connections to test low-rate application DoS handling.',
+  slow_http:           'Opens slow Ubuntu Apache2 HTTP connections to test low-rate application DoS handling.',
+  credential_stuffing_http: 'Attempts repeated credential login abuse patterns over Ubuntu Apache2 HTTP endpoints.',
+  command_injection_probe:  'Sends command-injection payload patterns over Ubuntu Apache2 query and POST inputs.',
+};
+
+const SCEN_META = {
+  tcp_syn_burst: { category: 'transport', osi_layer: 'L4', severity_hint: 'medium', supports_pause: true },
+  udp_flood: { category: 'transport', osi_layer: 'L4', severity_hint: 'medium', supports_pause: true },
+  icmp_flood: { category: 'network', osi_layer: 'L3', severity_hint: 'low', supports_pause: true },
+  fin_scan: { category: 'transport', osi_layer: 'L4', severity_hint: 'low', supports_pause: false },
+  web_scan: { category: 'application', osi_layer: 'L7', severity_hint: 'medium', supports_pause: false },
+  slow_http: { category: 'application', osi_layer: 'L7', severity_hint: 'medium', supports_pause: false },
+  sql_injection_sim: { category: 'application', osi_layer: 'L7', severity_hint: 'high', supports_pause: false },
+  ssh_bruteforce_sim: { category: 'application', osi_layer: 'L7', severity_hint: 'high', supports_pause: false },
+  credential_stuffing_http: { category: 'application', osi_layer: 'L7', severity_hint: 'high', supports_pause: false },
+  command_injection_probe: { category: 'application', osi_layer: 'L7', severity_hint: 'high', supports_pause: false },
 };
 
 let charts = {};
@@ -698,6 +945,8 @@ let autoRefId = null;
 let selectedRunId = null;
 let appReady = false;
 let expandedScenarioId = null;
+let latestBanRows = [];
+const releasedBanRows = new Map();
 const LOGIN_USER = 'admin';
 const LOGIN_PASS = 'rbbd';
 const THEME_STORAGE_KEY = 'ngfw_dashboard_theme';
@@ -705,18 +954,22 @@ let scenarioCatalog = Object.entries(SCEN_DESCS).map(([id, description]) => ({
   id,
   label: id.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()),
   description,
-  category: 'general',
+  category: SCEN_META[id]?.category || 'general',
+  osi_layer: SCEN_META[id]?.osi_layer || 'L7',
+  severity_hint: SCEN_META[id]?.severity_hint || 'medium',
+  supports_pause: Boolean(SCEN_META[id]?.supports_pause),
 }));
 let controlConfig = {
   max_concurrent_runs: 3,
   default_target_ip: '192.168.50.10',
+  default_target_profile: 'ubuntu-apache2',
   kali_network: {
     subnet: '192.168.60.0/24',
     reserved_ips: ['192.168.60.1', '192.168.60.2'],
     current_ip: '192.168.60.10',
     gateway: '192.168.60.1',
     interface: 'eth0',
-    notes: 'Update any OPNsense aliases that rely on a fixed Kali IP.',
+    notes: 'KALI_HOST auto-sync uses OPNsense REST API when API credentials are configured.',
   },
 };
 let kaliNetworkState = { ...controlConfig.kali_network };
@@ -730,6 +983,10 @@ function isMock()  { return document.getElementById('mock-toggle').checked; }
 function targetIp() { return document.getElementById('target-ip').value || '192.168.50.10'; }
 function banIp() { return document.getElementById('ban-ip').value || ''; }
 function kaliIp() { return document.getElementById('kali-ip').value || ''; }
+function telemetryBucketSeconds() { return Number(document.getElementById('bucket-seconds')?.value || '30'); }
+function refreshIntervalMs() { return Number(document.getElementById('refresh-ms')?.value || '5000'); }
+function eventsLimit() { return Number(document.getElementById('events-limit')?.value || '100'); }
+function mlLimit() { return Number(document.getElementById('ml-limit')?.value || '100'); }
 
 function fmtTime(isoStr) {
   try { return new Date(isoStr).toLocaleTimeString(); } catch { return isoStr; }
@@ -798,8 +1055,9 @@ function renderRunCapacity() {
   const paused = pausedRuns().length;
   const limit = Number(controlConfig.max_concurrent_runs || 3);
   const reserved = (controlConfig.kali_network?.reserved_ips || []).join(', ') || 'none';
+  const targetProfile = controlConfig.default_target_profile || 'ubuntu-apache2';
   document.getElementById('run-cap-box').textContent =
-    `Active runs: ${active}/${limit}\nCurrent target: ${targetIp()}\nKali subnet: ${controlConfig.kali_network?.subnet || '192.168.60.0/24'}\nReserved Kali IPs: ${reserved}`;
+    `Active runs: ${active}/${limit}\nCurrent target: ${targetIp()} (${targetProfile})\nKali subnet: ${controlConfig.kali_network?.subnet || '192.168.60.0/24'}\nReserved Kali IPs: ${reserved}`;
   document.getElementById('btn-master-stop').disabled = active === 0;
   const stats = document.getElementById('catalog-stats');
   if (stats) stats.textContent = `Active ${active} | Paused ${paused}`;
@@ -827,7 +1085,7 @@ function renderActiveRunBox() {
 
 function renderKaliNetworkState() {
   const state = kaliNetworkState || {};
-  const notes = state.notes || 'Update OPNsense aliases if they pin a fixed Kali IP.';
+  const notes = state.notes || 'KALI_HOST auto-sync uses OPNsense REST API when API credentials are configured.';
   document.getElementById('kali-network-box').textContent =
     `Current IP: ${state.ip || 'unknown'}\nInterface: ${state.interface || 'eth0'}\nGateway: ${state.gateway || '192.168.60.1'}\nSubnet: ${state.subnet || '192.168.60.0/24'}\nReserved: ${(state.reserved_ips || []).join(', ')}\n${notes}`;
 }
@@ -838,6 +1096,28 @@ function severityBadge(s) {
   if (v === 'medium' || v === '2') return badge('MED',    'b-med');
   if (v === 'low'    || v === '3') return badge('LOW',    'b-low');
   return badge(s, 'b-info');
+}
+
+function severityHintBadge(level) {
+  const value = String(level || 'medium').toLowerCase();
+  if (value === 'high') return badge('HIGH', 'b-high');
+  if (value === 'low') return badge('LOW', 'b-low');
+  return badge('MED', 'b-med');
+}
+
+function updateTelemetryCounterStrip(summary) {
+  const safe = summary || {};
+  const counters = {
+    'telem-total-alerts': safe.total_alerts ?? 0,
+    'telem-blocked': safe.blocked ?? 0,
+    'telem-banned-drops': safe.banned_drop_attempts ?? 0,
+    'telem-high-sev': safe.high_sev ?? 0,
+    'telem-active-flows': safe.active_flows ?? 0,
+  };
+  Object.entries(counters).forEach(([id, value]) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = String(value);
+  });
 }
 
 function actionBadge(a) {
@@ -883,10 +1163,13 @@ function toggleTheme() {
 async function apiFetch(path, opts = {}) {
   const url = apiBase() + path;
   const res = await fetch(url, {
+    cache: 'no-store',
     ...opts,
     headers: {
       'Content-Type': 'application/json',
       'X-API-Token': apiToken(),
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
       ...(opts.headers || {}),
     },
   });
@@ -896,12 +1179,27 @@ async function apiFetch(path, opts = {}) {
       const payload = await res.json();
       if (typeof payload?.detail === 'string') message = payload.detail;
       else if (payload?.detail?.message) message = payload.detail.message;
+      else if (payload?.detail) message = JSON.stringify(payload.detail);
+      else if (payload?.error) message = String(payload.error);
     } catch {
       // Keep fallback status message.
     }
     throw new Error(message);
   }
   return res.json();
+}
+
+async function logDashboardAction(action, details = {}, actor = 'dashboard-ui') {
+  if (!action || isMock()) return;
+  if (!apiBase() || !apiToken()) return;
+  try {
+    await apiFetch('/dashboard/action-log', {
+      method: 'POST',
+      body: JSON.stringify({ action, details, actor }),
+    });
+  } catch {
+    // Action logging should never block primary dashboard actions.
+  }
 }
 
 // ───────────────────────────────────────────────────────────
@@ -913,6 +1211,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    void logDashboardAction('tab_switch', { tab: btn.dataset.tab });
     if (btn.dataset.tab === 'control')   refreshControlState();
     if (btn.dataset.tab === 'telemetry') refreshTelemetry();
     if (btn.dataset.tab === 'ml')        refreshML();
@@ -972,6 +1271,7 @@ async function launchScenario(scenarioId) {
     renderRunCapacity();
     renderActiveRunBox();
     outEl.textContent = JSON.stringify(data, null, 2);
+    void logDashboardAction('launch', { run_id: data.run_id, scenario: data.scenario, target_ip: data.target_ip });
   } catch (err) {
     outEl.textContent = 'Error: ' + err.message;
   }
@@ -1003,6 +1303,7 @@ async function stopRunById(runId, reason = 'dashboard_manual_stop') {
     renderRunCapacity();
     renderActiveRunBox();
     outEl.textContent = JSON.stringify(data, null, 2);
+    void logDashboardAction('run_stop', { run_id: runId, reason });
   } catch (err) {
     outEl.textContent = 'Error: ' + err.message;
   }
@@ -1033,6 +1334,7 @@ async function pauseRunById(runId, reason = 'dashboard_pause') {
     renderRunCapacity();
     renderActiveRunBox();
     outEl.textContent = JSON.stringify(data, null, 2);
+    void logDashboardAction('run_pause', { run_id: runId, reason });
   } catch (err) {
     outEl.textContent = 'Error: ' + err.message;
   }
@@ -1063,6 +1365,7 @@ async function resumeRunById(runId, reason = 'dashboard_resume') {
     renderRunCapacity();
     renderActiveRunBox();
     outEl.textContent = JSON.stringify(data, null, 2);
+    void logDashboardAction('run_resume', { run_id: runId, reason });
   } catch (err) {
     outEl.textContent = 'Error: ' + err.message;
   }
@@ -1088,6 +1391,7 @@ async function stopAllRuns() {
     });
     await refreshControlState();
     outEl.textContent = JSON.stringify(data, null, 2);
+    void logDashboardAction('run_stop_all', { stopped: data.stopped, run_ids: data.run_ids || [] });
   } catch (err) {
     outEl.textContent = 'Error: ' + err.message;
   }
@@ -1105,7 +1409,7 @@ async function assignKaliIp() {
       reserved_ips: controlConfig.kali_network?.reserved_ips || ['192.168.60.1', '192.168.60.2'],
       gateway: controlConfig.kali_network?.gateway || '192.168.60.1',
       interface: controlConfig.kali_network?.interface || 'eth0',
-      notes: 'Mock reassignment applied. Update OPNsense aliases if they pin Kali to a fixed IP.',
+      notes: 'Mock reassignment applied. In live mode, KALI_HOST auto-sync uses OPNsense REST API.',
     };
     renderKaliNetworkState();
     return;
@@ -1119,6 +1423,7 @@ async function assignKaliIp() {
     controlConfig.kali_network = { ...(controlConfig.kali_network || {}), current_ip: data.ip, reserved_ips: data.reserved_ips, subnet: data.subnet, gateway: data.gateway, interface: data.interface, notes: data.notes };
     renderKaliNetworkState();
     renderRunCapacity();
+    void logDashboardAction('kali_ip_assign', { ip: data.ip, mode: data.mode || 'unknown' });
   } catch (err) {
     box.textContent = 'Error: ' + err.message;
   }
@@ -1143,7 +1448,8 @@ document.getElementById('btn-ban').addEventListener('click', async () => {
       body: JSON.stringify({ ip: ipAddress, duration_minutes: duration, reason: 'progressive_dashboard_block' }),
     });
     box.textContent = JSON.stringify(data, null, 2);
-    refreshControlState();
+    void logDashboardAction('ban_create', { ip: ipAddress, duration_minutes: duration, ban_id: data.ban_id });
+    await refreshControlState();
   } catch (err) {
     box.textContent = 'Error: ' + err.message;
   }
@@ -1154,6 +1460,12 @@ document.getElementById('btn-unban').addEventListener('click', async () => {
   const ipAddress = banIp();
   if (!ipAddress) return;
   if (isMock()) {
+    const existing = latestBanRows.find(item => item.ip === ipAddress) || { ip: ipAddress, duration_minutes: 0 };
+    latestBanRows = latestBanRows.map(item =>
+      item.ip === ipAddress ? { ...item, status: 'released', released_at: new Date().toISOString() } : item,
+    );
+    rememberReleasedBan(existing, 'mock_dashboard_release');
+    renderBanLog(latestBanRows);
     box.textContent = `Mock unban applied for ${ipAddress}.`;
     return;
   }
@@ -1162,8 +1474,15 @@ document.getElementById('btn-unban').addEventListener('click', async () => {
       method: 'POST',
       body: JSON.stringify({ ip: ipAddress, reason: 'dashboard_release' }),
     });
+    const releasedEntry = { ...(latestBanRows.find(item => item.ip === ipAddress) || {}), ...data };
+    latestBanRows = latestBanRows.map(item =>
+      item.ip === ipAddress ? { ...item, ...data, status: 'released' } : item,
+    );
+    rememberReleasedBan(releasedEntry, 'dashboard_release');
+    renderBanLog(latestBanRows);
     box.textContent = JSON.stringify(data, null, 2);
-    refreshControlState();
+    void logDashboardAction('ban_release', { ip: ipAddress, ban_id: data.ban_id || null, reason: 'dashboard_release' });
+    await refreshControlState();
   } catch (err) {
     box.textContent = 'Error: ' + err.message;
   }
@@ -1176,6 +1495,18 @@ document.getElementById('target-ip').addEventListener('input', event => {
 });
 document.getElementById('kali-ip').addEventListener('input', event => {
   event.target.dataset.userEdited = '1';
+});
+document.getElementById('bucket-seconds').addEventListener('change', () => {
+  if (document.querySelector('.tab-btn.active')?.dataset.tab === 'telemetry') refreshTelemetry();
+});
+document.getElementById('refresh-ms').addEventListener('change', () => {
+  startAutoRefresh();
+});
+document.getElementById('events-limit').addEventListener('change', () => {
+  if (document.querySelector('.tab-btn.active')?.dataset.tab === 'telemetry') refreshTelemetry();
+});
+document.getElementById('ml-limit').addEventListener('change', () => {
+  if (document.querySelector('.tab-btn.active')?.dataset.tab === 'ml') refreshML();
 });
 
 function renderScenarioCatalog() {
@@ -1195,6 +1526,9 @@ function renderScenarioCatalog() {
     tdName.appendChild(nameBtn);
 
     const tdCategory = td(item.category || 'general');
+    const tdLayer = td(item.osi_layer || 'L7');
+    const tdSeverity = document.createElement('td');
+    tdSeverity.appendChild(severityHintBadge(item.severity_hint));
     const tdActive = document.createElement('td');
     tdActive.appendChild(badge(String(activeRunCountForScenario(item.id)), 'b-info'));
     const tdTarget = td(targetIp());
@@ -1202,8 +1536,9 @@ function renderScenarioCatalog() {
     const actionWrap = document.createElement('div');
     actionWrap.className = 'catalog-actions';
     const latestRun = latestActiveRunForScenario(item.id);
+    const supportsPause = Boolean(item.supports_pause);
     const latestPaused = latestRun && String(latestRun.status || '').toLowerCase() === 'paused';
-    const canPause = latestRun && String(latestRun.status || '').toLowerCase() === 'running';
+    const canPause = supportsPause && latestRun && String(latestRun.status || '').toLowerCase() === 'running';
     const launchBtn = document.createElement('button');
     launchBtn.className = 'icon-btn play';
     launchBtn.textContent = '▶';
@@ -1219,13 +1554,15 @@ function renderScenarioCatalog() {
     if (latestPaused) launchBtn.disabled = false;
     actionWrap.appendChild(launchBtn);
 
-    const pauseBtn = document.createElement('button');
-    pauseBtn.className = 'icon-btn pause';
-    pauseBtn.textContent = '⏸';
-    pauseBtn.title = 'Pause attack';
-    pauseBtn.disabled = !canPause;
-    pauseBtn.addEventListener('click', () => latestRun && pauseRunById(latestRun.run_id, 'dashboard_pause_latest'));
-    actionWrap.appendChild(pauseBtn);
+    if (supportsPause) {
+      const pauseBtn = document.createElement('button');
+      pauseBtn.className = 'icon-btn pause';
+      pauseBtn.textContent = '⏸';
+      pauseBtn.title = 'Pause attack';
+      pauseBtn.disabled = !canPause;
+      pauseBtn.addEventListener('click', () => latestRun && pauseRunById(latestRun.run_id, 'dashboard_pause_latest'));
+      actionWrap.appendChild(pauseBtn);
+    }
 
     const stopLatestBtn = document.createElement('button');
     stopLatestBtn.className = 'icon-btn stop';
@@ -1236,14 +1573,14 @@ function renderScenarioCatalog() {
     actionWrap.appendChild(stopLatestBtn);
     tdActions.appendChild(actionWrap);
 
-    tr.append(tdName, tdCategory, tdActive, tdTarget, tdActions);
+    tr.append(tdName, tdCategory, tdLayer, tdSeverity, tdActive, tdTarget, tdActions);
     tbody.appendChild(tr);
 
     if (expandedScenarioId === item.id) {
       const detailTr = document.createElement('tr');
       detailTr.className = 'catalog-detail-row';
       const detailTd = document.createElement('td');
-      detailTd.colSpan = 5;
+      detailTd.colSpan = 7;
       const desc = document.createElement('div');
       desc.className = 'scen-desc';
       desc.textContent = item.description || SCEN_DESCS[item.id] || 'No description available.';
@@ -1280,20 +1617,134 @@ function renderRunLog() {
   });
 }
 
-function renderBanLog(rows) {
-  const tbody = document.getElementById('ban-log-body');
-  tbody.innerHTML = '';
-  rows.forEach(item => {
-    const tr = document.createElement('tr');
-    tr.append(
-      td(item.ip),
-      td(item.duration_minutes + ' min'),
-      td(fmtTime(item.expires_at)),
+function banRowKey(entry) {
+  return String(entry?.ban_id || entry?.ip || Math.random());
+}
+
+function shortBanId(entry) {
+  const value = String(entry?.ban_id || 'n/a');
+  return value.slice(0, 5);
+}
+
+function formatBanRemaining(entry) {
+  const expiresDate = new Date(entry.expires_at || Date.now());
+  const remainingMs = expiresDate.getTime() - Date.now();
+  const remainingMinutes = Math.max(0, Math.ceil(remainingMs / 60000));
+  if (remainingMinutes >= 60) {
+    return `${Math.floor(remainingMinutes / 60)}h ${remainingMinutes % 60}m left`;
+  }
+  return `${remainingMinutes}m left`;
+}
+
+function rememberReleasedBan(entry, reason = 'dashboard_list_release') {
+  const key = banRowKey(entry);
+  releasedBanRows.set(key, {
+    ...entry,
+    status: 'released',
+    released_at: new Date().toISOString(),
+    release_reason: reason,
+    _fade_until: Date.now() + 5000,
+  });
+  window.setTimeout(() => {
+    releasedBanRows.delete(key);
+    renderBanLog(latestBanRows);
+  }, 5100);
+}
+
+async function releaseBanFromList(entry) {
+  const box = document.getElementById('firewall-status-box');
+  const ipAddress = String(entry?.ip || '').trim();
+  if (!ipAddress) return;
+
+  if (isMock()) {
+    latestBanRows = latestBanRows.map(item =>
+      item.ip === ipAddress ? { ...item, status: 'released', released_at: new Date().toISOString() } : item,
     );
-    const tdStatus = document.createElement('td');
-    tdStatus.appendChild(badge(item.status.toUpperCase(), item.status === 'active' ? 'b-block' : 'b-pass'));
-    tr.appendChild(tdStatus);
-    tbody.appendChild(tr);
+    rememberReleasedBan(entry, 'mock_dashboard_list_release');
+    renderBanLog(latestBanRows);
+    if (box) box.textContent = `Mock unban applied for ${ipAddress}.`;
+    return;
+  }
+
+  try {
+    const data = await apiFetch('/firewall/unban', {
+      method: 'POST',
+      body: JSON.stringify({ ip: ipAddress, reason: 'dashboard_list_release' }),
+    });
+    latestBanRows = latestBanRows.map(item =>
+      item.ip === ipAddress
+        ? { ...item, ...data, status: 'released', released_at: data.released_at || new Date().toISOString() }
+        : item,
+    );
+    rememberReleasedBan({ ...entry, ...data }, 'dashboard_list_release');
+    renderBanLog(latestBanRows);
+    if (box) box.textContent = `Released ${ipAddress} (${shortBanId(data)})`;
+    void logDashboardAction('ban_release', {
+      ip: ipAddress,
+      ban_id: data.ban_id || entry.ban_id || null,
+      reason: 'dashboard_list_release',
+      source: 'ban_window',
+    });
+    window.setTimeout(() => {
+      refreshControlState();
+      if (document.querySelector('.tab-btn.active')?.dataset.tab === 'telemetry') {
+        refreshTelemetry();
+      }
+    }, 5200);
+  } catch (err) {
+    if (box) box.textContent = 'Error: ' + err.message;
+  }
+}
+
+function renderBanLog(rows) {
+  latestBanRows = Array.isArray(rows) ? rows.slice() : [];
+  const redBanBox = document.getElementById('red-ban-box');
+  const blueBanBox = document.getElementById('blue-ban-box');
+  if (!redBanBox && !blueBanBox) return;
+  const activeRows = latestBanRows.filter(item => String(item.status || '').toLowerCase() === 'active');
+  const now = Date.now();
+  const releasedRows = Array.from(releasedBanRows.values()).filter(item => Number(item._fade_until || 0) > now);
+  const windows = [
+    { node: redBanBox, empty: 'No active red-team bans.' },
+    { node: blueBanBox, empty: 'No active blue-team bans.' },
+  ].filter(item => item.node);
+
+  if (!activeRows.length && !releasedRows.length) {
+    windows.forEach(item => {
+      item.node.textContent = item.empty;
+    });
+    return;
+  }
+
+  windows.forEach(item => {
+    item.node.innerHTML = '';
+
+    activeRows.slice(0, 40).forEach(entry => {
+      const row = document.createElement('div');
+      row.className = 'ban-item';
+      const text = document.createElement('div');
+      text.className = 'ban-item-text';
+      text.textContent = `ID ${shortBanId(entry)} | ${entry.ip} | ${entry.duration_minutes || 0}m configured | ${formatBanRemaining(entry)}`;
+      const releaseBtn = document.createElement('button');
+      releaseBtn.className = 'ban-release-btn';
+      releaseBtn.textContent = 'Release';
+      releaseBtn.addEventListener('click', () => {
+        releaseBtn.disabled = true;
+        releaseBanFromList(entry);
+      });
+      row.append(text, releaseBtn);
+      item.node.appendChild(row);
+    });
+
+    releasedRows.slice(0, 20).forEach(entry => {
+      const row = document.createElement('div');
+      row.className = 'ban-item released';
+      const text = document.createElement('div');
+      text.className = 'ban-item-text';
+      text.textContent = `ID ${shortBanId(entry)} | ${entry.ip} | ${entry.duration_minutes || 0}m configured | released`;
+      row.appendChild(text);
+      item.node.appendChild(row);
+    });
   });
 }
 
@@ -1304,7 +1755,10 @@ async function refreshControlState() {
       id,
       label: scenarioLabel(id),
       description,
-      category: id.includes('flood') ? 'network' : (id.includes('scan') ? 'transport' : 'application'),
+      category: SCEN_META[id]?.category || (id.includes('flood') ? 'network' : (id.includes('scan') ? 'transport' : 'application')),
+      osi_layer: SCEN_META[id]?.osi_layer || (id.includes('icmp') ? 'L3' : 'L7'),
+      severity_hint: SCEN_META[id]?.severity_hint || 'medium',
+      supports_pause: Boolean(SCEN_META[id]?.supports_pause),
     }));
     kaliNetworkState = {
       ip: kaliIp() || '192.168.60.10',
@@ -1312,18 +1766,19 @@ async function refreshControlState() {
       gateway: '192.168.60.1',
       subnet: '192.168.60.0/24',
       reserved_ips: ['192.168.60.1', '192.168.60.2'],
-      notes: 'Mock mode: aliases may need updates after live reassignment.',
+      notes: 'Mock mode: live KALI_HOST auto-sync depends on OPNsense REST API wiring.',
     };
     controlConfig = {
       ...controlConfig,
       max_concurrent_runs: 3,
       default_target_ip: targetIp(),
+      default_target_profile: 'ubuntu-apache2',
       kali_network: { ...kaliNetworkState, current_ip: kaliNetworkState.ip },
     };
     renderScenarioCatalog();
     renderRunLog();
     renderActiveRunBox();
-    renderBanLog([{ ip: '192.168.60.10', duration_minutes: 60, expires_at: new Date(Date.now() + 3600_000).toISOString(), status: 'active' }]);
+    renderBanLog([{ ban_id: 'mock-ban-1', ip: '192.168.60.10', duration_minutes: 60, expires_at: new Date(Date.now() + 3600_000).toISOString(), status: 'active' }]);
     renderKaliNetworkState();
     renderRunCapacity();
     firewallBox.textContent = 'Mock mode: firewall hooks are simulated.';
@@ -1343,7 +1798,10 @@ async function refreshControlState() {
       id: item.id,
       label: scenarioLabel(item.id),
       description: item.description || SCEN_DESCS[item.id] || '',
-      category: item.category || 'general',
+      category: item.category || SCEN_META[item.id]?.category || 'general',
+      osi_layer: item.osi_layer || SCEN_META[item.id]?.osi_layer || 'L7',
+      severity_hint: item.severity_hint || SCEN_META[item.id]?.severity_hint || 'medium',
+      supports_pause: Boolean(item.supports_pause ?? SCEN_META[item.id]?.supports_pause),
     }));
     runLog = runs;
     syncControlInputs();
@@ -1383,9 +1841,11 @@ function mockEvents(n = 20) {
 }
 
 function mockSummary() {
+  const blocked = rnd(20, 70);
   return {
     total_alerts: rnd(80, 250),
-    blocked:      rnd(20, 70),
+    blocked,
+    banned_drop_attempts: rnd(0, Math.max(5, Math.floor(blocked * 0.7))),
     high_sev:     rnd(15, 50),
     medium_sev:   rnd(25, 80),
     low_sev:      rnd(10, 40),
@@ -1466,21 +1926,139 @@ function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
+function summarizeTelemetryEvents(events, bucketSeconds = 30) {
+  const normalizedBucketSeconds = [30, 60, 120, 180, 300].includes(Number(bucketSeconds))
+    ? Number(bucketSeconds)
+    : 30;
+  if (!Array.isArray(events) || events.length === 0) {
+    return {
+      total_alerts: 0,
+      blocked: 0,
+      banned_drop_attempts: 0,
+      high_sev: 0,
+      medium_sev: 0,
+      low_sev: 0,
+      anomalies: 0,
+      active_flows: 0,
+      bucket_seconds: normalizedBucketSeconds,
+      over_time: [],
+      top_sources: [],
+      top_ports: [],
+    };
+  }
+
+  const severity = { high: 0, medium: 0, low: 0 };
+  const sourceCounter = new Map();
+  const portCounter = new Map();
+  const bucketCounter = new Map();
+  const flowSet = new Set();
+  let blocked = 0;
+  let anomalies = 0;
+  let latestBucketEpoch = 0;
+
+  events.forEach(ev => {
+    const action = String(ev.action || '').toLowerCase();
+    if (['block', 'drop', 'reject'].includes(action)) blocked += 1;
+
+    const sev = String(ev.severity || '').toLowerCase();
+    if (sev === 'high') severity.high += 1;
+    else if (sev === 'medium') severity.medium += 1;
+    else severity.low += 1;
+
+    const raw = String(ev.raw || ev.signature || '').toLowerCase();
+    if (raw.includes('anomaly')) anomalies += 1;
+
+    const srcIp = String(ev.src_ip || 'unknown');
+    if (srcIp !== 'unknown') sourceCounter.set(srcIp, (sourceCounter.get(srcIp) || 0) + 1);
+
+    const portValue = Number(ev.dst_port || 0);
+    if (portValue > 0) portCounter.set(portValue, (portCounter.get(portValue) || 0) + 1);
+
+    flowSet.add(`${srcIp}|${String(ev.dst_ip || 'unknown')}|${portValue}`);
+
+    const parsed = new Date(ev.timestamp || Date.now());
+    const dt = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+    const bucketMs = normalizedBucketSeconds * 1000;
+    const bucketEpoch = Math.floor(dt.getTime() / bucketMs) * bucketMs;
+    latestBucketEpoch = Math.max(latestBucketEpoch, bucketEpoch);
+    bucketCounter.set(bucketEpoch, (bucketCounter.get(bucketEpoch) || 0) + 1);
+  });
+
+  const bucketMs = normalizedBucketSeconds * 1000;
+  const windowBuckets = 12;
+  const startEpoch = latestBucketEpoch - ((windowBuckets - 1) * bucketMs);
+  const overTime = Array.from({ length: windowBuckets }, (_, index) => {
+    const bucketEpoch = startEpoch + (index * bucketMs);
+    const bucketDt = new Date(bucketEpoch);
+    const label = normalizedBucketSeconds < 60
+      ? bucketDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : bucketDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return {
+      label,
+      count: bucketCounter.get(bucketEpoch) || 0,
+    };
+  });
+
+  const topSources = Array.from(sourceCounter.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([ip, count]) => ({ ip, count }));
+
+  const topPorts = Array.from(portCounter.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([port, count]) => ({ port, count }));
+
+  return {
+    total_alerts: events.length,
+    blocked,
+    banned_drop_attempts: 0,
+    high_sev: severity.high,
+    medium_sev: severity.medium,
+    low_sev: severity.low,
+    anomalies,
+    active_flows: flowSet.size,
+    bucket_seconds: normalizedBucketSeconds,
+    over_time: overTime,
+    top_sources: topSources,
+    top_ports: topPorts,
+  };
+}
+
 // ───────────────────────────────────────────────────────────
 //  Telemetry
 // ───────────────────────────────────────────────────────────
+function computeBannedDropAttempts(events, bans) {
+  const activeBanIps = new Set(
+    (bans || [])
+      .filter(item => String(item.status || '').toLowerCase() === 'active')
+      .map(item => String(item.ip || '').trim())
+      .filter(Boolean),
+  );
+  if (!activeBanIps.size) return 0;
+  return (events || []).filter(item => {
+    const srcIp = String(item.src_ip || '').trim();
+    const action = String(item.action || '').toLowerCase();
+    return activeBanIps.has(srcIp) && ['block', 'drop', 'reject'].includes(action);
+  }).length;
+}
+
 async function refreshTelemetry() {
   document.getElementById('telem-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
-  let summary, events;
+  let summary, events, bans;
+  const bucketSeconds = telemetryBucketSeconds();
+  const eventLimit = eventsLimit();
 
   if (isMock()) {
-    summary = mockSummary();
-    events  = mockEvents(20);
+    events = mockEvents(eventLimit);
+    summary = summarizeTelemetryEvents(events, bucketSeconds);
+    bans = latestBanRows;
   } else {
     try {
-      [summary, events] = await Promise.all([
-        apiFetch('/telemetry/summary'),
-        apiFetch('/telemetry/events?limit=20').then(r => r.events || r),
+      [summary, events, bans] = await Promise.all([
+        apiFetch(`/telemetry/summary?limit=0&bucket_seconds=${bucketSeconds}&lab_only=1&_ts=${Date.now()}`),
+        apiFetch(`/telemetry/events?limit=${eventLimit}&lab_only=1&_ts=${Date.now()}`).then(r => r.events || r || []),
+        apiFetch('/firewall/bans').then(r => r.bans || []).catch(() => latestBanRows),
       ]);
     } catch (err) {
       document.getElementById('telem-ts').textContent = 'Error: ' + err.message;
@@ -1488,7 +2066,17 @@ async function refreshTelemetry() {
     }
   }
 
+  const bannedDrops = computeBannedDropAttempts(events, bans);
+  summary = {
+    ...(summary || {}),
+    banned_drop_attempts: bannedDrops,
+  };
+  if (Array.isArray(bans)) {
+    renderBanLog(bans);
+  }
+
   renderSummaryCards(summary);
+  updateTelemetryCounterStrip(summary);
   renderTimeline(summary);
   renderSeverity(summary);
   renderSources(summary);
@@ -1502,6 +2090,7 @@ function renderSummaryCards(s) {
   [
     { label: 'Total Alerts',  val: s.total_alerts,  cls: 'red'    },
     { label: 'Blocked',       val: s.blocked,       cls: 'red'    },
+    { label: 'Banned IP Drops', val: s.banned_drop_attempts ?? 0, cls: 'red' },
     { label: 'High Severity', val: s.high_sev,      cls: 'yellow' },
     { label: 'Anomalies',     val: s.anomalies,     cls: 'orange' },
     { label: 'Active Flows',  val: s.active_flows,  cls: 'blue'   },
@@ -1515,14 +2104,29 @@ function renderSummaryCards(s) {
 }
 
 function renderTimeline(s) {
-  destroyChart('timeline');
+  const labels = s.over_time.map(d => d.label);
+  const values = s.over_time.map(d => d.count);
+  if (!labels.length) {
+    labels.push('No events yet');
+    values.push(0);
+  }
+  if (labels.length === 1) {
+    labels.unshift('Earlier');
+    values.unshift(0);
+  }
+  if (charts.timeline) {
+    charts.timeline.data.labels = labels;
+    charts.timeline.data.datasets[0].data = values;
+    charts.timeline.update('none');
+    return;
+  }
   const ctx = document.getElementById('ch-timeline').getContext('2d');
   charts.timeline = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: s.over_time.map(d => d.label),
+      labels,
       datasets: [{
-        data: s.over_time.map(d => d.count),
+        data: values,
         borderColor: '#58a6ff',
         backgroundColor: 'rgba(88,166,255,.1)',
         tension: 0.3, fill: true, pointRadius: 3,
@@ -1533,14 +2137,19 @@ function renderTimeline(s) {
 }
 
 function renderSeverity(s) {
-  destroyChart('severity');
+  const values = [s.high_sev, s.medium_sev, s.low_sev];
+  if (charts.severity) {
+    charts.severity.data.datasets[0].data = values;
+    charts.severity.update('none');
+    return;
+  }
   const ctx = document.getElementById('ch-severity').getContext('2d');
   charts.severity = new Chart(ctx, {
     type: 'doughnut',
     data: {
       labels: ['High', 'Medium', 'Low'],
       datasets: [{
-        data: [s.high_sev, s.medium_sev, s.low_sev],
+        data: values,
         backgroundColor: ['#f85149', '#d29922', '#3fb950'],
         borderWidth: 0,
       }],
@@ -1553,26 +2162,40 @@ function renderSeverity(s) {
 }
 
 function renderSources(s) {
-  destroyChart('sources');
+  const labels = s.top_sources.map(d => d.ip);
+  const values = s.top_sources.map(d => d.count);
+  if (charts.sources) {
+    charts.sources.data.labels = labels;
+    charts.sources.data.datasets[0].data = values;
+    charts.sources.update('none');
+    return;
+  }
   const ctx = document.getElementById('ch-sources').getContext('2d');
   charts.sources = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: s.top_sources.map(d => d.ip),
-      datasets: [{ data: s.top_sources.map(d => d.count), backgroundColor: '#58a6ff' }],
+      labels,
+      datasets: [{ data: values, backgroundColor: '#58a6ff' }],
     },
     options: { ...CHART_DEFAULTS, indexAxis: 'y' },
   });
 }
 
 function renderPorts(s) {
-  destroyChart('ports');
+  const labels = s.top_ports.map(d => String(d.port));
+  const values = s.top_ports.map(d => d.count);
+  if (charts.ports) {
+    charts.ports.data.labels = labels;
+    charts.ports.data.datasets[0].data = values;
+    charts.ports.update('none');
+    return;
+  }
   const ctx = document.getElementById('ch-ports').getContext('2d');
   charts.ports = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: s.top_ports.map(d => String(d.port)),
-      datasets: [{ data: s.top_ports.map(d => d.count), backgroundColor: '#3fb950' }],
+      labels,
+      datasets: [{ data: values, backgroundColor: '#3fb950' }],
     },
     options: { ...CHART_DEFAULTS },
   });
@@ -1604,15 +2227,16 @@ function renderEventsTable(events) {
 async function refreshML() {
   document.getElementById('ml-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
   let mlSummary, mlRows;
+  const limit = mlLimit();
 
   if (isMock()) {
     mlSummary = mockMLSummary();
-    mlRows    = mockMLRows(15);
+    mlRows    = mockMLRows(limit);
   } else {
     try {
       [mlSummary, mlRows] = await Promise.all([
         apiFetch('/ml/summary'),
-        apiFetch('/ml/predictions?limit=15').then(r => r.predictions || r),
+        apiFetch(`/ml/predictions?limit=${limit}`).then(r => r.predictions || r),
       ]);
     } catch (err) {
       document.getElementById('ml-ts').textContent = 'Error: ' + err.message;
@@ -1643,15 +2267,22 @@ function renderMLCards(s) {
 }
 
 function renderAnomalyTrend(s) {
-  destroyChart('anomaly');
+  const labels = s.trend.map(d => d.label);
+  const values = s.trend.map(d => d.score);
+  if (charts.anomaly) {
+    charts.anomaly.data.labels = labels;
+    charts.anomaly.data.datasets[0].data = values;
+    charts.anomaly.update('none');
+    return;
+  }
   const ctx = document.getElementById('ch-anomaly').getContext('2d');
   charts.anomaly = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: s.trend.map(d => d.label),
+      labels,
       datasets: [{
         label: 'Avg Anomaly Score',
-        data: s.trend.map(d => d.score),
+        data: values,
         borderColor: '#e3b341',
         backgroundColor: 'rgba(227,179,65,.1)',
         tension: 0.3, fill: true, pointRadius: 3,
@@ -1672,17 +2303,25 @@ function renderAnomalyTrend(s) {
 }
 
 function renderPredDist(s) {
-  destroyChart('predDist');
   const dist = s.distribution || {};
-  const ctx  = document.getElementById('ch-pred-dist').getContext('2d');
+  const labels = Object.keys(dist);
+  const values = Object.values(dist);
   const COLORS = ['#3fb950', '#58a6ff', '#f85149', '#d29922', '#e3b341', '#bc8cff'];
+  if (charts.predDist) {
+    charts.predDist.data.labels = labels;
+    charts.predDist.data.datasets[0].data = values;
+    charts.predDist.data.datasets[0].backgroundColor = labels.map((_, i) => COLORS[i % COLORS.length]);
+    charts.predDist.update('none');
+    return;
+  }
+  const ctx  = document.getElementById('ch-pred-dist').getContext('2d');
   charts.predDist = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: Object.keys(dist),
+      labels,
       datasets: [{
-        data: Object.values(dist),
-        backgroundColor: Object.keys(dist).map((_, i) => COLORS[i % COLORS.length]),
+        data: values,
+        backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
       }],
     },
     options: { ...CHART_DEFAULTS },
@@ -1715,13 +2354,14 @@ function renderMLTable(rows) {
 // ───────────────────────────────────────────────────────────
 function startAutoRefresh() {
   if (autoRefId) clearInterval(autoRefId);
+  const intervalMs = Math.max(250, refreshIntervalMs());
   autoRefId = setInterval(() => {
     const active = document.querySelector('.tab-btn.active')?.dataset.tab;
     if (active === 'telemetry') refreshTelemetry();
     if (active === 'ml')        refreshML();
     document.getElementById('last-refresh').textContent =
-      'Auto &#8635; ' + new Date().toLocaleTimeString();
-  }, 30_000);
+      'Auto ' + (intervalMs / 1000).toFixed(intervalMs < 1000 ? 2 : (intervalMs < 10000 ? 1 : 0)) + 's | ' + new Date().toLocaleTimeString();
+  }, intervalMs);
 }
 
 function initApp() {
@@ -1732,6 +2372,10 @@ function initApp() {
   refreshControlState();
   refreshTelemetry();
   startAutoRefresh();
+  void logDashboardAction('session_init', {
+    mode: isMock() ? 'mock' : 'live',
+    api_base: apiBase(),
+  });
 }
 
 document.getElementById('login-form').addEventListener('submit', event => {
@@ -1743,6 +2387,7 @@ document.getElementById('login-form').addEventListener('submit', event => {
     document.getElementById('login-overlay').classList.add('hidden');
     errorEl.textContent = '';
     initApp();
+    void logDashboardAction('login_success', { username });
     return;
   }
   errorEl.textContent = 'Invalid credentials. Try again.';

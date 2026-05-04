@@ -1,0 +1,24 @@
+1. Windows (11) Host (10 Cores, 16Logical processors, 16GB RAM DDR5, 512GB SSD with 3 partitions)
+2. Opnsense VM
+- 4GB RAM 
+- 10GB Storage
+- 2 Cores
+- 3 NIC (
+	- NIC 1:                       MAC: 080027E0B780, Attachment: Bridged Interface 'Intel(R) Wi-Fi 6 AX201 160MHz', Cable connected: on, Trace: off (file: none), Type: 82540EM, Reported speed: 0 Mbps, Boot priority: 0, Promisc Policy: allow-all, Bandwidth group: none
+	- NIC 2:                       MAC: 080027370B35, Attachment: Host-only Interface 'VirtualBox Host-Only Ethernet Adapter #2', Cable connected: on, Trace: off (file: none), Type: 82540EM, Reported speed: 0 Mbps, Boot priority: 0, Promisc Policy: allow-all, Bandwidth group: none
+	- NIC 3:                       MAC: 080027E8A9AD, Attachment: Host-only Interface 'VirtualBox Host-Only Ethernet Adapter #3', Cable connected: on, Trace: off (file: none), Type: 82540EM, Reported speed: 0 Mbps, Boot priority: 0, Promisc Policy: allow-all, Bandwidth group: none
+)
+- Shared folder none and no Vbox guest addition
+Debian VM 
+- 4GB RAM
+- 40GB Storage 
+- 4 cores
+- 3 NIC (
+	- NIC 1:                       MAC: 080027567A04, Attachment: Bridged Interface 'Intel(R) Wi-Fi 6 AX201 160MHz', Cable connected: on, Trace: off (file: none), Type: 82540EM, Reported speed: 0 Mbps, Boot priority: 0, Promisc Policy: deny, Bandwidth group: none
+	- NIC 2:                       MAC: 0800278381B0, Attachment: Host-only Interface 'VirtualBox Host-Only Ethernet Adapter #2', Cable connected: on, Trace: off (file: none), Type: 82540EM, Reported speed: 0 Mbps, Boot priority: 0, Promisc Policy: allow-all, Bandwidth group: none
+	- NIC 3:                       MAC: 0800270CF6B3, Attachment: Host-only Interface 'VirtualBox Host-Only Ethernet Adapter #3', Cable connected: on, Trace: off (file: none), Type: 82540EM, Reported speed: 0 Mbps, Boot priority: 0, Promisc Policy: allow-all, Bandwidth group: none
+)
+- shared folder enabled and vbox guest addition present
+3. All containers are running inside Debian
+- kali and ubuntu run on sudo (have mount point in Debian for logs and coping files containers <-> Debian <-> windows host
+- Grafana, fastapi, promtail and loki all run on normal user

@@ -1,19 +1,37 @@
 # OPNsense Click-by-Click Checklist
 
-**Navigation:** [Kali Checklist](Kali_Checklist.md) | [Ubuntu Checklist](Ubuntu_Checklist.md) | [Lab Guide](NGFW_3Day_Lab_Guide.md)
+**Navigation:** [Kali Checklist](Kali_Checklist.md) | [Ubuntu Checklist](Ubuntu_Checklist.md) | [Theory Guide](NGFW_Theory_to_Action_Guide.md)
+
+**Theory Quick Index (Most Used):**
+
+1. [Separation of Duties and Blast Radius](NGFW_Theory_to_Action_Guide.md#2-theory-separation-of-duties-and-blast-radius)
+2. [Least Privilege Segmentation (L3/L4)](NGFW_Theory_to_Action_Guide.md#3-theory-least-privilege-segmentation-l3l4)
+3. [DNS as a Security Control Plane](NGFW_Theory_to_Action_Guide.md#4-theory-dns-as-a-security-control-plane)
+4. [Detection Pipeline (IDS then IPS)](NGFW_Theory_to_Action_Guide.md#5-theory-detection-pipeline-ids-then-ips)
+5. [Containment and Incident Response Loop](NGFW_Theory_to_Action_Guide.md#7-theory-containment-and-incident-response-loop)
+6. [Minimal Exposure for External Access](NGFW_Theory_to_Action_Guide.md#11-theory-minimal-exposure-for-external-access)
 
 ---
 
-This document is a direct execution checklist for the OPNsense part of the project. It is intentionally procedural. Follow it in order.
+This checklist is written for exact reproduction. Follow every step in order.
 
-Lab context for this checklist:
+Execution tags used in this file:
 
-1. OPNsense runs in its own VM with 2 vCPU, 2 GB RAM, and 10 GB storage.
-2. Debian runs in a separate VM with 4 vCPU, 4 GB RAM, and 40 GB storage.
-3. Debian hosts the Podman containers for Kali and Ubuntu.
-4. Kali lives on 192.168.60.0/24 behind OPT1.
-5. Ubuntu lives on 192.168.50.0/24 behind LAN.
-6. Keep OPNsense work lightweight and do heavier logging, dashboard, ML, and traffic generation work on Debian.
+1. `[opnsense-ui]` means run in the OPNsense web UI.
+2. `[opnsense-shell]` means run in OPNsense console option 8 shell.
+3. `[debian]` means run on Debian host terminal.
+4. `[kali]` means run inside Kali container shell.
+5. `[ubuntu]` means run inside Ubuntu container shell.
+
+Lab constants used by this checklist:
+
+1. OPNsense LAN IP: `192.168.50.1`
+2. OPNsense OPT1 IP: `192.168.60.1`
+3. Ubuntu target IP: `192.168.50.10`
+4. Kali source network: `192.168.60.0/24`
+5. Ubuntu network: `192.168.50.0/24`
+
+Do not continue if your live values differ from the constants above. Fix topology first.
 
 ---
 
@@ -21,13 +39,38 @@ Lab context for this checklist:
 
 ## 1. Before Logging In
 
-1. Confirm OPNsense interfaces are assigned correctly:
-   - WAN = internet-facing adapter
-   - LAN = 192.168.50.1/24
-   - OPT1 = 192.168.60.1/24
-2. Confirm Ubuntu is in 192.168.50.0/24 and Kali is in 192.168.60.0/24.
-3. Confirm each VM uses OPNsense as default gateway.
-4. Take a snapshot before changes.
+Goal: prove the topology is correct before touching firewall policy.
+
+- `[debian]` Confirm container IPs and gateways.
+
+```bash
+sudo podman exec kali-lab ip -4 addr show eth0
+sudo podman exec kali-lab ip route
+sudo podman exec ubuntu-lab ip -4 addr show eth0
+sudo podman exec ubuntu-lab ip route
+```
+
+Expected:
+
+1. Kali has `192.168.60.x` and default route via `192.168.60.1`.
+2. Ubuntu has `192.168.50.10` and default route via `192.168.50.1`.
+
+- `[kali]` Verify gateway reachability.
+
+```bash
+ping -c 2 192.168.60.1
+```
+
+- `[ubuntu]` Verify gateway reachability.
+
+```bash
+ping -c 2 192.168.50.1
+```
+
+Expected:
+
+1. Both pings succeed.
+2. If either fails, stop and fix VM/container network mapping before continuing.
 
 ---
 
@@ -35,201 +78,203 @@ Lab context for this checklist:
 
 ### 2.1 Update Firmware
 
-1. Log in to OPNsense web UI.
-2. Open System > Firmware > Updates.
-3. Click Check for updates.
-4. Install updates.
-5. Reboot if prompted.
+1. `[opnsense-ui]` Open **System > Firmware > Updates**.
+2. Click **Check for updates**.
+3. Install all available updates.
+4. Reboot if prompted.
+
+Expected: firewall returns to login page with no pending critical updates.
 
 ### 2.2 Time and Basic Settings
 
-1. Open System > Settings > General.
-2. Set correct timezone.
-3. Verify DNS servers if WAN DNS is required.
+1. `[opnsense-ui]` Open **System > Settings > General**.
+2. Set timezone correctly.
+3. Keep DNS resolver values consistent with your WAN setup.
+4. Save and Apply.
 
-Save.
+Expected: current time shown in UI is correct.
 
 ### 2.3 Admin Access Hardening
 
-1. Open System > Access > Administration.
-2. Keep GUI accessible only on trusted interface.
-3. If SSH is enabled, prefer key auth.
+1. `[opnsense-ui]` Open **System > Access > Administration**.
+2. Keep GUI access limited to trusted interfaces only.
+3. If SSH is enabled, prefer key auth and disable password auth where practical.
+4. Save and Apply.
 
-Save.
+Expected: management remains reachable from trusted path, not broad WAN exposure.
 
 ---
 
 ## 3. Create All Required Aliases First
 
-Open Firewall > Aliases.
+Goal: create deterministic alias objects before adding any rules.
 
-Create these aliases one by one:
+- `[opnsense-ui]` Open **Firewall > Aliases**.
+- Create each alias exactly as listed:
 
-1. KALI_HOST = 192.168.60.10
-2. UBUNTU_HOST = 192.168.50.10
-3. LAB_NET_RED = 192.168.60.0/24
-4. LAB_NET_BLUE = 192.168.50.0/24
-5. FIREWALL_LAN_IP = 192.168.50.1
-6. FIREWALL_OPT1_IP = 192.168.60.1
-7. TEST_TARGET_PORTS = 22,80,443,5000,8080
-8. OPSENSE_INFRA_PORTS = 53,123,443,514,5514
-9. DNS_PORT = 53
+- `KALI_HOST`: Type `External (advanced)`, Content `192.168.60.10`
+- `AUTO_BAN_IPS`: Type `External (advanced)`, Content `192.168.60.254`
+- `UBUNTU_HOST`: Type `Host(s)`, Content `192.168.50.10`
+- `LAB_NET_RED`: Type `Network(s)`, Content `192.168.60.0/24`
+- `LAB_NET_BLUE`: Type `Network(s)`, Content `192.168.50.0/24`
+- `FIREWALL_LAN_IP`: Type `Host(s)`, Content `192.168.50.1`
+- `FIREWALL_OPT1_IP`: Type `Host(s)`, Content `192.168.60.1`
+- `TEST_TARGET_PORTS`: Type `Port(s)`, Content `22,80,443,5000,8080`
+- `OPSENSE_INFRA_PORTS`: Type `Port(s)`, Content `53,123,443,514,5514`
+- `DNS_PORT`: Type `Port(s)`, Content `53`
 
-After each alias:
+Critical checks:
 
-Save.
+1. `KALI_HOST` and `AUTO_BAN_IPS` must be `External (advanced)`, not `Host(s)`.
+2. If wrong type was created, delete and recreate with correct type.
 
-Apply changes if prompted.
+Expected: alias list contains exactly the 10 entries above with correct types.
 
 ---
 
 ## 4. OPT1 Rules (Kali Side)
 
-Open Firewall > Rules > OPT1.
+Goal: enforce least privilege from attacker network to target network.
 
-Create these rules in this exact order.
+Open **Firewall > Rules > OPT1** and create rules in this exact order.
 
-### 4.1 Allow Kali to Ubuntu Test Services
+### 4.1 Block Dynamically Banned Attackers First
 
-1. Click Add.
-2. Action = Pass
-3. Interface = OPT1
-4. Protocol = TCP
-5. Source = KALI_HOST
-6. Destination = UBUNTU_HOST
-7. Destination port range = TEST_TARGET_PORTS
-8. Log = enabled
-9. Description = Allow Kali to Ubuntu test services
-10. Save
+1. Action: `Block`
+2. Interface: `OPT1`
+3. Protocol: `any`
+4. Source: `AUTO_BAN_IPS`
+5. Destination: `any`
+6. Log: enabled
+7. Description: `Block dynamically banned attacker IPs`
 
-### 4.2 Allow Kali DNS to Firewall
+### 4.2 Allow Kali to Ubuntu Test Services
 
-1. Click Add.
-2. Action = Pass
-3. Interface = OPT1
-4. Protocol = TCP/UDP
-5. Source = KALI_HOST
-6. Destination = OPT1 address
-7. Destination port range = DNS_PORT
-8. Log = enabled
-9. Description = Allow Kali DNS to firewall
-10. Save
+1. Action: `Pass`
+2. Interface: `OPT1`
+3. Protocol: `TCP`
+4. Source: `KALI_HOST`
+5. Destination: `UBUNTU_HOST`
+6. Destination port: `TEST_TARGET_PORTS`
+7. Log: enabled
+8. Description: `Allow Kali to Ubuntu test services`
 
-### 4.3 Block Kali External DNS
+### 4.3 Allow Kali DNS to Firewall
 
-1. Click Add.
-2. Action = Block
-3. Interface = OPT1
-4. Protocol = TCP/UDP
-5. Source = KALI_HOST
-6. Destination = any
-7. Destination port range = 53
-8. Log = enabled
-9. Description = Block Kali external DNS
-10. Save
+1. Action: `Pass`
+2. Interface: `OPT1`
+3. Protocol: `TCP/UDP`
+4. Source: `KALI_HOST`
+5. Destination: `FIREWALL_OPT1_IP`
+6. Destination port: `DNS_PORT`
+7. Log: enabled
+8. Description: `Allow Kali DNS to firewall`
 
-### 4.4 Block Kali to WAN/Other Unintended Egress
+### 4.4 Block Kali External DNS
 
-1. Click Add.
-2. Action = Block
-3. Interface = OPT1
-4. Protocol = any
-5. Source = KALI_HOST
-6. Destination = any
-7. Log = enabled
-8. Description = Block Kali unintended outbound
-9. Save
+1. Action: `Block`
+2. Interface: `OPT1`
+3. Protocol: `TCP/UDP`
+4. Source: `KALI_HOST`
+5. Destination: `any`
+6. Destination port: `53`
+7. Log: enabled
+8. Description: `Block Kali external DNS`
 
-### 4.5 Apply Rule Changes
+### 4.5 Block Kali to WAN/Other Unintended Egress
 
-1. Click Apply Changes.
-2. Confirm rules appear in intended top-down order.
+1. Action: `Block`
+2. Interface: `OPT1`
+3. Protocol: `any`
+4. Source: `KALI_HOST`
+5. Destination: `any`
+6. Log: enabled
+7. Description: `Block Kali unintended outbound`
+
+### 4.6 Apply Rule Changes
+
+1. Click **Apply Changes**.
+2. Verify top-down order is exactly sections 4.1 through 4.5.
+
+Expected: block-ban rule is first, explicit allow second, DNS controls next, broad block last.
 
 ---
 
 ## 5. LAN Rules (Ubuntu Side)
 
-Open Firewall > Rules > LAN.
+Goal: keep Ubuntu functional for lab services without making it a pivot host.
 
-Create these rules in this exact order.
+Open **Firewall > Rules > LAN** and create rules in this exact order.
 
 ### 5.1 Allow Ubuntu to Firewall Services
 
-1. Click Add.
-2. Action = Pass
-3. Interface = LAN
-4. Protocol = TCP/UDP
-5. Source = UBUNTU_HOST
-6. Destination = FIREWALL_LAN_IP
-7. Destination port range = OPSENSE_INFRA_PORTS
-8. Log = enabled
-9. Description = Allow Ubuntu to firewall services
-10. Save
+1. Action: `Pass`
+2. Interface: `LAN`
+3. Protocol: `TCP/UDP`
+4. Source: `UBUNTU_HOST`
+5. Destination: `FIREWALL_LAN_IP`
+6. Destination port: `OPSENSE_INFRA_PORTS`
+7. Log: enabled
+8. Description: `Allow Ubuntu to firewall services`
 
 ### 5.2 Allow Ubuntu DNS to Firewall
 
-1. Click Add.
-2. Action = Pass
-3. Interface = LAN
-4. Protocol = TCP/UDP
-5. Source = UBUNTU_HOST
-6. Destination = LAN address
-7. Destination port range = DNS_PORT
-8. Log = enabled
-9. Description = Allow Ubuntu DNS to firewall
-10. Save
+1. Action: `Pass`
+2. Interface: `LAN`
+3. Protocol: `TCP/UDP`
+4. Source: `UBUNTU_HOST`
+5. Destination: `FIREWALL_LAN_IP`
+6. Destination port: `DNS_PORT`
+7. Log: enabled
+8. Description: `Allow Ubuntu DNS to firewall`
 
 ### 5.3 Allow Temporary Ubuntu Outbound for Updates
 
-1. Click Add.
-2. Action = Pass
-3. Interface = LAN
-4. Protocol = TCP/UDP
-5. Source = UBUNTU_HOST
-6. Destination = any
-7. Log = enabled
-8. Description = Temporary Ubuntu outbound
-9. Save
+1. Action: `Pass`
+2. Interface: `LAN`
+3. Protocol: `TCP/UDP`
+4. Source: `UBUNTU_HOST`
+5. Destination: `any`
+6. Log: enabled
+7. Description: `Temporary Ubuntu outbound for setup`
 
 ### 5.4 Block Ubuntu External DNS
 
-1. Click Add.
-2. Action = Block
-3. Interface = LAN
-4. Protocol = TCP/UDP
-5. Source = UBUNTU_HOST
-6. Destination = any
-7. Destination port range = 53
-8. Log = enabled
-9. Description = Block Ubuntu external DNS
-10. Save
+1. Action: `Block`
+2. Interface: `LAN`
+3. Protocol: `TCP/UDP`
+4. Source: `UBUNTU_HOST`
+5. Destination: `any`
+6. Destination port: `53`
+7. Log: enabled
+8. Description: `Block Ubuntu external DNS`
 
 ### 5.5 Optional Block Ubuntu to Red Network
 
-1. Click Add.
-2. Action = Block
-3. Interface = LAN
-4. Protocol = any
-5. Source = UBUNTU_HOST
-6. Destination = LAB_NET_RED
-7. Log = enabled
-8. Description = Block Ubuntu to Kali network
-9. Save
+1. Action: `Block`
+2. Interface: `LAN`
+3. Protocol: `any`
+4. Source: `UBUNTU_HOST`
+5. Destination: `LAB_NET_RED`
+6. Log: enabled
+7. Description: `Block Ubuntu to red network`
 
 ### 5.6 Apply Rule Changes
 
-1. Click Apply Changes.
-2. Confirm rules are in expected order.
+1. Click **Apply Changes**.
+2. Verify order matches 5.1 to 5.5.
+
+Expected: policy remains explicit and deterministic.
 
 ---
 
 ## 6. NAT Check
 
-Open Firewall > NAT > Outbound.
+1. `[opnsense-ui]` Open **Firewall > NAT > Outbound**.
+2. Keep mode `Automatic` or `Hybrid`.
+3. Do not add broad custom outbound NAT rules.
 
-1. Leave mode as Automatic or Hybrid.
-2. Do not create broad custom NAT entries yet.
-3. Do not create inbound port forwards yet.
+Expected: no overly broad manual NAT exceptions.
 
 ---
 
@@ -237,40 +282,34 @@ Open Firewall > NAT > Outbound.
 
 ### 7.1 From Kali
 
-Run:
-
 ```bash
-nc -zv 192.168.50.10 22
 nc -zv 192.168.50.10 80
+nc -zv 192.168.50.10 22
 nc -zv 192.168.50.10 3306
+curl -m 5 http://192.168.50.10
 curl -m 5 https://example.com
 ```
 
 Expected:
 
-1. Allowed Ubuntu ports connect.
-2. Blocked ports fail.
-3. Internet access should fail if you blocked Kali egress.
+1. Allowed ports (22/80/443/5000/8080 when open on Ubuntu) can connect.
+2. Non-allowed ports fail or timeout.
+3. External egress test is blocked by policy.
 
 ### 7.2 From Ubuntu
-
-Run:
 
 ```bash
 ping -c 2 192.168.50.1
 dig @192.168.50.1 example.com
 ```
 
-Expected:
-
-1. Ubuntu reaches firewall.
-2. DNS through firewall works after Unbound is enabled.
+Expected: firewall reachability and resolver response succeed.
 
 ### 7.3 In OPNsense Logs
 
-1. Open Firewall > Log Files > Live View.
-2. Filter by source 192.168.60.10.
-3. Confirm pass and block entries appear.
+1. `[opnsense-ui]` Open **Firewall > Log Files > Live View**.
+2. Filter by current Kali source IP.
+3. Confirm both pass and block entries exist for tests above.
 
 ---
 
@@ -278,49 +317,39 @@ Expected:
 
 ### 8.1 Enable Service
 
-1. Open Services > Intrusion Detection > Administration.
-2. Check Enable.
-3. Select interfaces:
-   - LAN
-   - OPT1
-
-Save.
+1. `[opnsense-ui]` Open **Services > Intrusion Detection > Administration**.
+2. Enable IDS.
+3. Select interfaces `LAN` and `OPT1`.
+4. Save and Apply.
 
 ### 8.2 Download Rules
 
-1. Open Services > Intrusion Detection > Download.
-2. Enable ET Open only for the first pass.
-3. Leave abuse.ch disabled for now.
-4. Leave OPNsense-App-detect disabled for now.
-5. Click Download or Update Rules.
-6. Wait for completion.
+1. Open **Services > Intrusion Detection > Download**.
+2. Enable ET Open.
+3. Download/Update rules.
+
+Expected: ET Open rules download without error.
 
 ### 8.3 Set HOME_NET
 
-1. Return to Services > Intrusion Detection > Administration.
-2. Find HOME_NET or Home Networks field.
-3. Enter:
+1. Back in **Administration**, set HOME_NET to:
 
 ```text
 192.168.50.0/24,192.168.60.0/24
 ```
 
-Save.
+1. Save and Apply.
 
 ### 8.4 Policy Setup
 
-1. Open Services > Intrusion Detection > Policy.
-2. Create a new policy entry if required.
-3. Use ET Open as source.
-4. Set action to Alert first.
-
-Save.
+1. Open **Services > Intrusion Detection > Policy**.
+2. Start with alert-focused policy (not drop-all).
+3. Enable high-value categories first: exploit/scan/web/malware.
 
 ### 8.5 Start in IDS Mode
 
-1. Return to Services > Intrusion Detection > Administration.
-2. Ensure IPS/inline drop mode is still off.
-3. Start service.
+1. Confirm IDS mode is active (alerts only).
+2. Keep IPS disabled until section 9.5.
 
 ---
 
@@ -328,13 +357,11 @@ Save.
 
 ### 9.1 Prepare Ubuntu Web Target
 
-On Ubuntu:
+1. `[ubuntu]` Ensure Apache is running:
 
 ```bash
-sudo apt update
-sudo apt install -y apache2 curl
-sudo service apache2 start
-curl http://127.0.0.1
+sudo systemctl enable --now apache2
+curl -I http://127.0.0.1
 ```
 
 ### 9.2 Confirm Reachability from Kali
@@ -347,8 +374,6 @@ nc -zv 192.168.50.10 80
 ### 9.3 Generate Alert Traffic from Kali
 
 ```bash
-sudo apt update
-sudo apt install -y nmap curl nikto
 nmap -sS -Pn -p 1-1000 192.168.50.10
 nmap -sV -Pn 192.168.50.10
 nikto -h http://192.168.50.10
@@ -359,18 +384,19 @@ curl -A "sqlmap/1.0" "http://192.168.50.10/"
 
 ### 9.4 Check Alerts
 
-1. Open Services > Intrusion Detection > Alerts.
-2. Sort by newest first.
-3. Filter for source 192.168.60.10 if possible.
-4. Look for SID, message, source, destination.
+1. `[opnsense-ui]` Open **Services > Intrusion Detection > Alerts**.
+2. Sort newest first.
+3. Filter by current Kali IP.
+
+Expected: you see events referencing Kali source and Ubuntu destination.
 
 ### 9.5 Enable IPS Only After IDS Works
 
-1. Return to Services > Intrusion Detection > Administration.
-2. Enable IPS / inline mode.
-3. Apply.
-4. Re-run one or two earlier tests.
-5. Check whether events are now dropped or rejected.
+1. Enable IPS/inline mode.
+2. Re-run one short scan and one nikto run.
+3. Confirm alerts now include drop/reject where expected.
+
+If normal traffic breaks unexpectedly, revert to IDS mode and tune policy before retry.
 
 ---
 
@@ -378,33 +404,38 @@ curl -A "sqlmap/1.0" "http://192.168.50.10/"
 
 ### 10.1 Enable Unbound
 
-1. Open Services > Unbound DNS > General.
+1. `[opnsense-ui]` Open **Services > Unbound DNS > General**.
 2. Enable Unbound.
-3. Select interfaces:
-   - LAN
-   - OPT1
-   - Localhost if available
+3. Select interfaces: LAN and OPT1.
 4. Save and Apply.
 
 ### 10.2 Validate Firewall DNS
 
-1. Open Interfaces > Diagnostics > DNS Lookup.
+1. `[opnsense-ui]` Open **System > Diagnostics > DNS Lookup**.
 2. Query `example.com`.
-3. Confirm resolution succeeds.
+
+Expected: resolver returns records.
 
 ### 10.3 Validate from Clients
 
-From Kali:
+`[kali]`:
 
 ```bash
 dig @192.168.60.1 example.com
 dig @1.1.1.1 example.com
 ```
 
+`[ubuntu]`:
+
+```bash
+dig @192.168.50.1 example.com
+dig @8.8.8.8 example.com
+```
+
 Expected:
 
-1. Firewall DNS works.
-2. External DNS is blocked.
+1. Queries to firewall IP succeed.
+2. Direct external DNS queries are blocked.
 
 ---
 
@@ -412,31 +443,25 @@ Expected:
 
 ### 11.1 Configure Target
 
-1. Open System > Settings > Logging / Targets.
-2. Add new target.
-3. Enter Ubuntu IP.
-4. Start with UDP 514.
-5. Enable categories:
-   - firewall only first
-6. Save and Apply.
+1. `[opnsense-ui]` Open **System > Settings > Logging / Targets**.
+2. Add target host `192.168.50.10`, port `514`, transport `UDP`.
+3. Start with application `filter` only.
+4. Save and Apply.
 
 ### 11.2 Validate
 
-On Ubuntu:
+`[debian]`:
 
 ```bash
-sudo tcpdump -ni any port 514
+sudo tcpdump -ni any udp port 514
 ```
 
-Expected: packets from OPNsense arrive.
+Expected: packets from OPNsense arrive while generating traffic.
 
 ### 11.3 Expand Log Categories
 
-After validation:
-
-1. Add system logs.
-2. Add IDS/Suricata logs.
-3. Validate again.
+1. Add `suricata` only after `filter` flow is confirmed stable.
+2. Avoid enabling noisy categories all at once.
 
 ---
 
@@ -444,12 +469,12 @@ After validation:
 
 ## 12. Day 2 Preconditions
 
-Only continue when these are true:
+Proceed only if all are true:
 
-1. Day 1 firewall rules are working.
-2. Suricata is producing alerts in IDS mode.
-3. Debian is reachable at the Ubuntu-side IP you plan to use for log collection and dashboards.
-4. Debian has rsyslog or another listener ready before you point OPNsense logging at it.
+1. OPNsense rules from sections 4 and 5 are active.
+2. Suricata alerts are visible.
+3. Unbound DNS enforcement is working.
+4. Debian receives at least firewall filter logs.
 
 ---
 
@@ -457,52 +482,141 @@ Only continue when these are true:
 
 ### 13.1 Confirm OPNsense Can Reach Debian Services
 
-1. Open Interfaces > Diagnostics > Ping if available, or use System > Diagnostics > Ping.
-2. Ping the Debian-side service IP on the LAN segment.
-3. If Debian is represented by the Ubuntu container IP for logging, ping 192.168.50.10.
-4. If ping fails, stop and fix routing before changing logging settings.
+`[opnsense-shell]`:
+
+```sh
+ping -c 2 192.168.50.10
+```
 
 ### 13.2 Configure Remote Logging in Stages
 
-1. Open System > Settings > Logging / Targets.
-2. Edit the existing remote target or add a new one.
-3. Target host = Debian or Ubuntu-side listener IP.
-4. Start with transport = UDP.
-5. Port = 514.
-6. Select only firewall logs first.
-7. Save and Apply.
-8. Wait 10 to 20 seconds.
-9. Generate a test firewall event from Kali.
-10. Confirm the packets arrive on Debian before enabling more categories.
+1. Keep only `filter` enabled first.
+2. Generate traffic and confirm receipt on Debian.
+3. Then add `suricata`.
 
 ### 13.3 Add Suricata Logs After Firewall Logs Work
 
-1. Stay in System > Settings > Logging / Targets.
-2. Edit the same target.
-3. Add Intrusion Detection or Suricata category.
-4. Save and Apply.
-5. Re-run one Suricata-triggering test from Kali.
-6. Confirm Debian receives both firewall and IDS-related logs.
+1. Add `suricata` to the same target.
+2. Save and Apply.
+
+Expected: suricata events arrive in Debian logs after trigger traffic.
 
 ### 13.4 Review Local OPNsense Logging Health
 
-1. Open System > Log Files > General.
-2. Check for repeated syslog forwarding errors.
-3. Open Services > Intrusion Detection > Administration.
-4. Confirm service is still running after enabling remote logging.
-5. If the firewall feels slow, avoid enabling unnecessary feeds on OPNsense and keep heavy analysis on Debian.
+`[opnsense-shell]`:
 
-### 13.5 Create a Restricted Automation User Only If Needed
+```sh
+clog -f /var/log/filter/latest.log
+```
 
-Do this only if you later automate OPNsense actions.
+Expected: local logging is active and responsive.
 
-1. Open System > Access > Users.
-2. Click Add.
-3. Username = dedicated automation name.
-4. Set a strong password.
-5. Grant only the minimum permissions required.
-6. Do not reuse the main admin account for scripts.
-7. Save.
+### 13.5 Configure OPNsense REST API for Debian Control API
+
+1. `[opnsense-ui]` Open **System > Access > Users**.
+2. Create user `opn_api` (or equivalent dedicated API user).
+3. Edit user and generate API key + secret.
+4. Save credentials to Debian secure file (do not paste into checklist files).
+
+`[debian]` secure file preparation example:
+
+```bash
+mkdir -p ~/lab/secrets
+chmod 700 ~/lab/secrets
+cat > ~/lab/secrets/opnsense_api.env << 'EOF'
+OPNSENSE_API_BASE_URL='https://192.168.50.1'
+OPNSENSE_API_KEY='replace_with_key'
+OPNSENSE_API_SECRET='replace_with_secret'
+OPNSENSE_API_VERIFY_TLS='false'
+OPNSENSE_API_TIMEOUT_SECONDS='4'
+OPNSENSE_BAN_ALIAS_TABLE='AUTO_BAN_IPS'
+OPNSENSE_KALI_ALIAS_TABLE='KALI_HOST'
+EOF
+chmod 600 ~/lab/secrets/opnsense_api.env
+```
+
+Expected: credentials stored in one private file only.
+
+### 13.6 Validate Dashboard Hook Integration End-to-End
+
+`[debian]` validate raw alias API calls:
+
+```bash
+set -a
+source ~/lab/secrets/opnsense_api.env
+set +a
+
+curl -sk --user "$OPNSENSE_API_KEY:$OPNSENSE_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  -d '{"address":"192.168.60.222"}' \
+  "$OPNSENSE_API_BASE_URL/api/firewall/alias_util/add/AUTO_BAN_IPS"
+
+curl -sk --user "$OPNSENSE_API_KEY:$OPNSENSE_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -X POST \
+  -d '{"address":"192.168.60.222"}' \
+  "$OPNSENSE_API_BASE_URL/api/firewall/alias_util/delete/AUTO_BAN_IPS"
+```
+
+Expected: both return success JSON.
+
+Then validate control API integration:
+
+```bash
+curl -X POST http://127.0.0.1:5000/firewall/hook-test \
+  -H "X-API-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip":"192.168.60.222","reason":"opnsense_hook_test"}'
+
+curl -X POST http://127.0.0.1:5000/kali/network \
+  -H "X-API-Token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip":"192.168.60.20"}'
+```
+
+Expected:
+
+1. Hook test returns `status: ok`.
+2. Kali reassign returns updated `ip` and sync mode.
+
+### 13.7 If OPNsense Automation Feels Laggy (Exact Triage)
+
+`[debian]` check REST round-trip:
+
+```bash
+for i in 1 2 3 4 5; do
+  /usr/bin/time -f "api_roundtrip=%E" \
+    curl -sk --max-time 4 \
+    --user "$OPNSENSE_API_KEY:$OPNSENSE_API_SECRET" \
+    "$OPNSENSE_API_BASE_URL/api/firewall/alias_util/list/AUTO_BAN_IPS" >/dev/null
+done
+```
+
+Interpretation:
+
+1. Usually below 1 second in this lab is healthy.
+2. Repeated above 2 seconds indicates host contention.
+
+`[opnsense-shell]` quick health snapshot:
+
+```sh
+top -aSH -b -n 1 | head -n 35
+swapinfo -h
+iostat -x 1 3
+pfctl -si | egrep -i 'state|memory|current entries'
+```
+
+If unstable, reduce Suricata/rule/logging load before blaming API wiring.
+
+### 13.8 Keep or Drop Automated Ban/Unban
+
+Recommendation for this lab: keep it enabled with bounded timeouts.
+
+1. `OPNSENSE_API_TIMEOUT_SECONDS=4`
+2. `PODMAN_COMMAND_TIMEOUT_SECONDS=8`
+
+Use manual-only mode temporarily only during intentional high-load stress windows.
 
 ---
 
@@ -510,19 +624,13 @@ Do this only if you later automate OPNsense actions.
 
 ### 14.1 Keep Exposure Minimal
 
-1. Do not port-forward Kali.
-2. Do not port-forward raw syslog, indexer, or database ports.
-3. If public access is needed later, expose only the reverse proxy or dashboard/API entry point.
+Expose only dashboard/API path when needed. Do not expose raw logging, indexer, or container internals.
 
 ### 14.2 If You Must Add a Temporary Port Forward Later
 
-1. Open Firewall > NAT > Port Forward.
-2. Add only the exact destination host and exact destination port needed.
-3. Restrict source addresses if possible.
-4. Add a clear description.
-5. Save and Apply.
-6. Test from a controlled client only.
-7. Remove the rule when it is no longer required.
+1. Create narrow rule for one service only.
+2. Set source restriction when possible.
+3. Remove rule immediately after demonstration.
 
 ---
 
@@ -532,60 +640,38 @@ Do this only if you later automate OPNsense actions.
 
 ### 15.1 Reconfirm Resource-Safe Settings
 
-Because OPNsense only has 2 GB RAM and 2 cores:
-
-1. Keep ET Open as the main Suricata source.
-2. Do not enable every available ruleset family.
-3. Avoid turning on extra app-detect feeds unless you have a specific test for them.
-4. Watch dashboard responsiveness and OPNsense web UI responsiveness after each change.
+1. Keep ET Open as primary ruleset.
+2. Avoid enabling all categories blindly.
+3. Keep logging categories minimal unless needed for specific evidence.
 
 ### 15.2 Move from IDS to IPS Carefully
 
-1. Open Services > Intrusion Detection > Administration.
-2. Confirm IDS mode is working first.
-3. Enable IPS or inline mode.
-4. Save and Apply.
-5. Re-run only one or two known-trigger tests first.
-6. Check Alerts again.
-7. Check Firewall > Log Files > Live View for blocked or dropped traffic.
-8. If normal lab traffic breaks too broadly, disable IPS and reduce enabled categories.
+1. Enable IPS.
+2. Re-run one short scan/probe sequence.
+3. Confirm detection without breaking core allowed flows.
 
 ### 15.3 Final OPNsense Rule Review
 
-1. Open Firewall > Rules > OPT1.
-2. Confirm only the intended Kali-to-Ubuntu paths are passed.
-3. Open Firewall > Rules > LAN.
-4. Confirm Ubuntu-side allowances are still narrow.
-5. Open Firewall > NAT > Outbound.
-6. Confirm no unnecessary broad custom NAT rules were added during troubleshooting.
+1. OPT1 block-ban rule remains top-most.
+2. LAN/OPT1 rules still match intended order.
+3. No accidental broad allow above specific block rules.
 
 ### 15.4 Final DNS Review
 
-1. Open Services > Unbound DNS > General.
-2. Confirm Unbound is enabled only on required interfaces.
-3. Confirm client DNS rules still force Kali and Ubuntu to use the firewall.
-4. Re-test direct DNS to an outside resolver to verify it is still blocked.
+1. Client DNS to firewall succeeds.
+2. Direct external DNS remains blocked.
 
 ---
 
 ## 16. Optional Internet Publishing Support
 
-Only do this after local dashboard/API works.
-
 ### 16.1 NAT/Exposure Rule
 
-1. Do not create direct forwards to Kali.
-2. If you must expose something through OPNsense later, expose only reverse proxy or controlled dashboard/API endpoints.
-3. Keep internal log/indexer ports private.
+Only keep this if required by your final demo. Remove afterwards.
 
 ### 16.2 API Access for Automation
 
-If you plan to automate OPNsense later:
-
-1. Open System > Access > Users.
-2. Create a dedicated automation user if needed.
-3. Grant only minimum permissions.
-4. Do not use the main admin account for scripts.
+Do not expose OPNsense API endpoints publicly.
 
 ---
 
@@ -593,50 +679,46 @@ If you plan to automate OPNsense later:
 
 ### 17.1 Export Configuration
 
-1. Open System > Configuration > Backups.
-2. Download a config backup after each stable milestone.
+1. `[opnsense-ui]` Open **System > Configuration > Backups**.
+2. Export encrypted backup.
 
 ### 17.2 Capture Evidence
 
-Collect these:
+Capture and archive:
 
-1. Screenshot of aliases
-2. Screenshot of OPT1 rules
-3. Screenshot of LAN rules
-4. Screenshot of Suricata settings
-5. Screenshot of alerts page
-6. Screenshot of logging target
-7. Screenshot of remote log packets arriving on Debian
-8. Screenshot of final IPS mode setting if enabled
+1. Rule screenshots with ordering visible.
+2. Suricata alert screenshots with source/destination.
+3. DNS control test outputs.
+4. Remote logging packet capture proof.
+5. Hook-test and Kali reassign API outputs from Debian.
 
 ---
 
 ## 18. Minimum OPNsense Success Checklist
 
-You are done with the OPNsense side when all are true:
+Consider OPNsense complete only when all are true:
 
-1. Kali can reach only intended Ubuntu ports.
-2. Kali cannot reach unintended external destinations.
-3. Ubuntu can use firewall DNS.
-4. External DNS from clients is blocked.
-5. ET Open rules are downloaded.
-6. Suricata sees alerts for Kali-to-Ubuntu test traffic.
-7. Ubuntu receives OPNsense logs.
-8. Debian-side dashboard/log receiver sees forwarded OPNsense logs.
-9. IPS mode has been tested safely or deliberately left in IDS with reason noted.
-10. Configuration backup is exported.
+1. Aliases are created with correct types, including external aliases for `KALI_HOST` and `AUTO_BAN_IPS`.
+2. OPT1 and LAN rule order matches this checklist.
+3. Kali reaches only intended Ubuntu services.
+4. External DNS bypass from clients is blocked.
+5. Suricata alerts fire in IDS and optionally IPS mode.
+6. OPNsense forwards logs to Debian and Debian receives them.
+7. REST alias updates succeed with generated API credentials.
+8. Control API hook test can ban and unban without manual pf edits.
+9. Kali IP reassign sync updates `KALI_HOST` via REST API.
+10. Config backup exported successfully.
 
 ---
 
 ## 19. If Something Fails
 
-Use this order:
+Use this exact triage order:
 
-1. Check interface/IP/gateway.
-2. Check aliases.
-3. Check rule order.
-4. Check firewall live logs.
-5. Check Suricata service and HOME_NET.
-6. Check Ubuntu syslog listener.
-7. Re-test one change at a time.
-End of checklist.
+1. Confirm topology/IP/gateway first.
+2. Confirm alias types and rule order second.
+3. Confirm service-level function (Apache, Unbound, Suricata) third.
+4. Confirm logging path fourth.
+5. Confirm REST credentials and alias util endpoints last.
+
+Do not change multiple systems at once during troubleshooting. Change one layer, retest, then continue.

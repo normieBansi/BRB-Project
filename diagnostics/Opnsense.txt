@@ -1,0 +1,162 @@
+vbox@debian:~/lab/siem$ ssh opn_hook@192.168.50.1 "sudo -n pfctl -t AUTO_BAN_IPS -T show"
+vbox@debian:~/lab/siem$ ssh opn_hook@192.168.50.1 "sudo -n pfctl -t KALI_HOST -T show"
+vbox@debian:~/lab/siem$ for i in 1 2 3 4 5; do
+   /usr/bin/time -f "ssh_roundtrip=%E" ssh \
+      -o BatchMode=yes \
+      -o GSSAPIAuthentication=no \
+      -o PreferredAuthentications=publickey \
+      opn_hook@192.168.50.1 "echo ok" >/dev/null
+done
+ssh_roundtrip=0:00.06
+ssh_roundtrip=0:00.05
+ssh_roundtrip=0:00.05
+ssh_roundtrip=0:00.05
+ssh_roundtrip=0:00.05
+vbox@debian:~/lab/siem$ top -aSH -b -n 1 | head -n 35
+top: invalid option -- 'a'
+vbox@debian:~/lab/siem$ ssh root@192.168.50.1
+(root@192.168.50.1) Password:
+Last login: Sat May  2 22:41:50 2026 from 192.168.50.2
+------------------------------------------------
+|       Hello, this is OPNsense 25.7           |           :::::::.
+|                                              |           :::::::::.
+|  Website:     https://opnsense.org/          |        :::        :::
+|  Handbook:    https://docs.opnsense.org/     |        :::        :::
+|  Forums:      https://forum.opnsense.org/    |        :::        :::
+|  Code:        https://github.com/opnsense    |         `:::::::::
+|  Reddit:      https://reddit.com/r/opnsense  |           `:::::::
+------------------------------------------------
+
+*** OPNsense.internal: OPNsense 25.7.11_9 (amd64) ***
+
+ LAN (em1)       -> v4: 192.168.50.1/24
+ OPT1 (em2)      -> v4: 192.168.60.1/24
+ WAN (em0)       -> v4/DHCP4: 10.114.175.70/24
+                    v6/DHCP6: 2409:40f2:100c:7f90:a00:27ff:fee0:b780/64
+
+ HTTPS: SHA256 F0 CF B9 4B 2B 4B A2 E5 5E 56 67 EA 0D 78 2A 80
+               A3 23 4A 48 61 42 1B 5F 62 30 CD 81 42 2E 49 36
+ SSH:   SHA256 I0YsWRXOrbiwHiVRPFC20SaUS8uAb7jOnN59WmuI29c (ECDSA)
+ SSH:   SHA256 HdG6aAuYHkLsl9IMB3p1S1rrvAT8P3DF5gbL2pvxHww (ED25519)
+ SSH:   SHA256 4qd1nsep+h8SBqc9zVN9wsVCpQicdC9jHGLgP+KnxPQ (RSA)
+
+  0) Logout                              7) Ping host
+  1) Assign interfaces                   8) Shell
+  2) Set interface IP address            9) pfTop
+  3) Reset the root password            10) Firewall log
+  4) Reset to factory defaults          11) Reload all services
+  5) Power off system                   12) Update from console
+  6) Reboot system                      13) Restore a backup
+
+Enter an option: 8
+
+root@OPNsense:~ # top -aSH -b -n 1 | head -n 35
+last pid: 16528;  load averages:  0.59,  0.44,  0.38; battery: 88%  up 0+00:36:30    22:43:48
+268 threads:   3 running, 249 sleeping, 16 waiting
+CPU:  1.0% user,  0.0% nice,  5.7% system,  0.1% interrupt, 93.2% idle
+Mem: 1184M Active, 604M Inact, 832M Wired, 1309M Free
+ARC: 251M Total, 85M MFU, 129M MRU, 534K Anon, 2102K Header, 35M Other
+     172M Compressed, 492M Uncompressed, 2.85:1 Ratio
+Swap: 1024M Total, 1024M Free
+
+  PID USERNAME    PRI NICE   SIZE    RES STATE    C   TIME    WCPU COMMAND
+   11 root        187 ki31     0B    32K RUN      0  34:18 100.00% [idle{idle: cpu0}]
+
+root@OPNsense:~ # swapinfo -h
+Device              Size     Used    Avail Capacity
+/dev/ada0p2         1.0G       0B     1.0G     0%
+root@OPNsense:~ # df -h
+Filesystem                   Size    Used   Avail Capacity  Mounted on
+zroot/ROOT/default           8.2G    1.2G    7.0G    15%    /
+devfs                        1.0K      0B    1.0K     0%    /dev
+zroot/tmp                    7.0G    368K    7.0G     0%    /tmp
+zroot                        7.0G     96K    7.0G     0%    /zroot
+zroot/usr/ports              7.0G     96K    7.0G     0%    /usr/ports
+zroot/usr/src                7.0G     96K    7.0G     0%    /usr/src
+zroot/home                   7.0G    176K    7.0G     0%    /home
+zroot/var/log                7.0G    312K    7.0G     0%    /var/log
+zroot/var/audit              7.0G     96K    7.0G     0%    /var/audit
+zroot/var/crash              7.0G     96K    7.0G     0%    /var/crash
+zroot/var/mail               7.0G    104K    7.0G     0%    /var/mail
+zroot/var/tmp                7.0G     96K    7.0G     0%    /var/tmp
+devfs                        1.0K      0B    1.0K     0%    /var/dhcpd/dev
+devfs                        1.0K      0B    1.0K     0%    /var/unbound/dev
+/usr/local/lib/python3.11    8.2G    1.2G    7.0G    15%    /var/unbound/usr/local/lib/python3.11
+/lib                         8.2G    1.2G    7.0G    15%    /var/unbound/lib
+root@OPNsense:~ # df -i
+Filesystem                1K-blocks    Used   Avail Capacity iused    ifree %iused  Mounted on
+zroot/ROOT/default          8629028 1307840 7321188    15%   77841 14642376    1%   /
+devfs                             1       0       1     0%       0        0     -   /dev
+zroot/tmp                   7321556     368 7321188     0%      77 14642376    0%   /tmp
+zroot                       7321284      96 7321188     0%       7 14642376    0%   /zroot
+zroot/usr/ports             7321284      96 7321188     0%       7 14642376    0%   /usr/ports
+zroot/usr/src               7321284      96 7321188     0%       7 14642376    0%   /usr/src
+zroot/home                  7321364     176 7321188     0%      27 14642376    0%   /home
+zroot/var/log               7321500     312 7321188     0%      40 14642376    0%   /var/log
+zroot/var/audit             7321284      96 7321188     0%       9 14642376    0%   /var/audit
+zroot/var/crash             7321284      96 7321188     0%       8 14642376    0%   /var/crash
+zroot/var/mail              7321292     104 7321188     0%       9 14642376    0%   /var/mail
+zroot/var/tmp               7321284      96 7321188     0%       8 14642376    0%   /var/tmp
+devfs                             1       0       1     0%       0        0     -   /var/dhcpd/dev
+devfs                             1       0       1     0%       0        0     -   /var/unbound/dev
+/usr/local/lib/python3.11   8629028 1307840 7321188    15%   77841 14642376    1%   /var/unbound/usr/local/lib/python3.11
+/lib                        8629028 1307840 7321188    15%   77841 14642376    1%   /var/unbound/lib
+root@OPNsense:~ # iostat -x 1 3
+                        extended device statistics  
+device       r/s     w/s     kr/s     kw/s  ms/r  ms/w  ms/o  ms/t qlen  %b  
+ada0           4       2     80.6     37.3     1     1     0     1    0   0 
+cd0            0       0      0.1      0.0     0     0     0     0    0   0 
+pass0          0       0      0.0      0.0     0     0     0     0    0   0 
+pass1          0       0      0.0      0.0     0     0     0     0    0   0 
+                        extended device statistics  
+device       r/s     w/s     kr/s     kw/s  ms/r  ms/w  ms/o  ms/t qlen  %b  
+ada0           0       0      0.0      0.0     0     0     0     0    0   0 
+cd0            0       0      0.0      0.0     0     0     0     0    0   0 
+pass0          0       0      0.0      0.0     0     0     0     0    0   0 
+pass1          0       0      0.0      0.0     0     0     0     0    0   0 
+                        extended device statistics  
+device       r/s     w/s     kr/s     kw/s  ms/r  ms/w  ms/o  ms/t qlen  %b  
+ada0           0       0      0.0      0.0     0     0     0     0    0   0 
+cd0            0       0      0.0      0.0     0     0     0     0    0   0 
+pass0          0       0      0.0      0.0     0     0     0     0    0   0 
+pass1          0       0      0.0      0.0     0     0     0     0    0   0 
+root@OPNsense:~ # ps auxww | egrep 'suricata|unbound|configd|php-fpm' | grep -v egrep
+root    32806   1.0 36.3 2366164 1505460  -  Ss   22:32    0:36.79 /usr/local/bin/suricata -D --netmap --pidfile /var/run/suricata.pid -c /usr/local/etc/suricata/suricata.yaml
+root      444   0.0  0.4   36300   15308  -  Is   22:07    0:00.06 /usr/local/bin/python3 /usr/local/opnsense/service/configd.py (python3.11)
+root      446   0.0  1.1   85292   45640  -  I    22:07    0:03.03 /usr/local/bin/python3 /usr/local/opnsense/service/configd.py console (python3.11)
+unbound 49642   0.0  0.9   80412   38916  -  Is   22:33    0:00.09 /usr/local/sbin/unbound -c /var/unbound/unbound.conf
+root@OPNsense:~ # pfctl -si | egrep -i 'state|memory|current entries'
+State Table                          Total             Rate
+  current entries                        8               
+  memory                                 0               
+  state-mismatch                         2               
+  state-insert                           0               
+  state-limit                            0               
+root@OPNsense:~ # exit
+exit
+
+*** OPNsense.internal: OPNsense 25.7.11_9 (amd64) ***
+
+ LAN (em1)       -> v4: 192.168.50.1/24
+ OPT1 (em2)      -> v4: 192.168.60.1/24
+ WAN (em0)       -> v4/DHCP4: 10.114.175.70/24
+                    v6/DHCP6: 2409:40f2:100c:7f90:a00:27ff:fee0:b780/64
+
+ HTTPS: SHA256 F0 CF B9 4B 2B 4B A2 E5 5E 56 67 EA 0D 78 2A 80
+               A3 23 4A 48 61 42 1B 5F 62 30 CD 81 42 2E 49 36
+ SSH:   SHA256 I0YsWRXOrbiwHiVRPFC20SaUS8uAb7jOnN59WmuI29c (ECDSA)
+ SSH:   SHA256 HdG6aAuYHkLsl9IMB3p1S1rrvAT8P3DF5gbL2pvxHww (ED25519)
+ SSH:   SHA256 4qd1nsep+h8SBqc9zVN9wsVCpQicdC9jHGLgP+KnxPQ (RSA)
+
+  0) Logout                              7) Ping host
+  1) Assign interfaces                   8) Shell
+  2) Set interface IP address            9) pfTop
+  3) Reset the root password            10) Firewall log
+  4) Reset to factory defaults          11) Reload all services
+  5) Power off system                   12) Update from console
+  6) Reboot system                      13) Restore a backup
+
+Enter an option: exit
+
+Connection to 192.168.50.1 closed.
+vbox@debian:~/lab/siem$ 
