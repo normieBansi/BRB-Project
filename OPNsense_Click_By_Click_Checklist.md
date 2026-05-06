@@ -109,6 +109,8 @@ Expected: management remains reachable from trusted path, not broad WAN exposure
 
 Goal: create deterministic alias objects before adding any rules.
 
+If you already added your own rules/objects, do not delete them. Keep your custom entries, then add or correct the aliases below and place the rule set from section 4 above broad catch-all blocks.
+
 - `[opnsense-ui]` Open **Firewall > Aliases**.
 - Create each alias exactly as listed:
 
@@ -119,7 +121,8 @@ Goal: create deterministic alias objects before adding any rules.
 - `LAB_NET_BLUE`: Type `Network(s)`, Content `192.168.50.0/24`
 - `FIREWALL_LAN_IP`: Type `Host(s)`, Content `192.168.50.1`
 - `FIREWALL_OPT1_IP`: Type `Host(s)`, Content `192.168.60.1`
-- `TEST_TARGET_PORTS`: Type `Port(s)`, Content `22,80,443,5000,8080`
+- `ICMP_ALLOWED_TARGETS`: Type `Host(s)`, Content `192.168.50.10,192.168.60.1`
+- `TEST_TARGET_PORTS`: Type `Port(s)`, Content `22,53,80,443,5000,8080`
 - `OPSENSE_INFRA_PORTS`: Type `Port(s)`, Content `53,123,443,514,5514`
 - `DNS_PORT`: Type `Port(s)`, Content `53`
 
@@ -128,7 +131,7 @@ Critical checks:
 1. `KALI_HOST` and `AUTO_BAN_IPS` must be `External (advanced)`, not `Host(s)`.
 2. If wrong type was created, delete and recreate with correct type.
 
-Expected: alias list contains exactly the 10 entries above with correct types.
+Expected: alias list contains exactly the 11 entries above with correct types.
 
 ---
 
@@ -152,14 +155,24 @@ Open **Firewall > Rules > OPT1** and create rules in this exact order.
 
 1. Action: `Pass`
 2. Interface: `OPT1`
-3. Protocol: `TCP`
+3. Protocol: `TCP/UDP`
 4. Source: `KALI_HOST`
 5. Destination: `UBUNTU_HOST`
 6. Destination port: `TEST_TARGET_PORTS`
 7. Log: enabled
 8. Description: `Allow Kali to Ubuntu test services`
 
-### 4.3 Allow Kali DNS to Firewall
+### 4.3 Allow Kali ICMP to Lab Targets
+
+1. Action: `Pass`
+2. Interface: `OPT1`
+3. Protocol: `ICMP`
+4. Source: `KALI_HOST`
+5. Destination: `ICMP_ALLOWED_TARGETS`
+6. Log: enabled
+7. Description: `Allow Kali ICMP to gateway and Ubuntu`
+
+### 4.4 Allow Kali DNS to Firewall
 
 1. Action: `Pass`
 2. Interface: `OPT1`
@@ -170,7 +183,7 @@ Open **Firewall > Rules > OPT1** and create rules in this exact order.
 7. Log: enabled
 8. Description: `Allow Kali DNS to firewall`
 
-### 4.4 Block Kali External DNS
+### 4.5 Block Kali External DNS
 
 1. Action: `Block`
 2. Interface: `OPT1`
@@ -181,7 +194,7 @@ Open **Firewall > Rules > OPT1** and create rules in this exact order.
 7. Log: enabled
 8. Description: `Block Kali external DNS`
 
-### 4.5 Block Kali to WAN/Other Unintended Egress
+### 4.6 Block Kali to WAN/Other Unintended Egress
 
 1. Action: `Block`
 2. Interface: `OPT1`
@@ -191,10 +204,10 @@ Open **Firewall > Rules > OPT1** and create rules in this exact order.
 6. Log: enabled
 7. Description: `Block Kali unintended outbound`
 
-### 4.6 Apply Rule Changes
+### 4.7 Apply Rule Changes
 
 1. Click **Apply Changes**.
-2. Verify top-down order is exactly sections 4.1 through 4.5.
+2. Verify top-down order is exactly sections 4.1 through 4.6.
 
 Expected: block-ban rule is first, explicit allow second, DNS controls next, broad block last.
 
@@ -283,18 +296,23 @@ Expected: no overly broad manual NAT exceptions.
 ### 7.1 From Kali
 
 ```bash
+ping -c 2 192.168.60.1
+ping -c 2 192.168.50.10
 nc -zv 192.168.50.10 80
 nc -zv 192.168.50.10 22
 nc -zv 192.168.50.10 3306
+hping3 --udp -p 53 -c 3 192.168.50.10
 curl -m 5 http://192.168.50.10
 curl -m 5 https://example.com
 ```
 
 Expected:
 
-1. Allowed ports (22/80/443/5000/8080 when open on Ubuntu) can connect.
-2. Non-allowed ports fail or timeout.
-3. External egress test is blocked by policy.
+1. ICMP to OPT1 gateway and Ubuntu succeeds.
+2. Allowed ports (22/53/80/443/5000/8080 when open on Ubuntu) can connect.
+3. UDP/53 test packets to Ubuntu pass through OPT1 rule set.
+4. Non-allowed ports fail or timeout.
+5. External egress test is blocked by policy.
 
 ### 7.2 From Ubuntu
 

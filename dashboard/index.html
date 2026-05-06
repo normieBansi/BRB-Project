@@ -44,8 +44,11 @@
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: ui-monospace, 'Cascadia Code', 'Courier New', monospace;
-      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background:
+        radial-gradient(1200px 500px at 8% -10%, rgba(88, 166, 255, 0.14), transparent 62%),
+        radial-gradient(900px 420px at 110% -20%, rgba(248, 81, 73, 0.12), transparent 58%),
+        var(--bg);
       color: var(--text);
       min-height: 100vh;
       font-size: 14px;
@@ -119,6 +122,28 @@
       transition: border-color 0.2s;
     }
     .cfg-group input:focus { outline: none; border-color: var(--blue); }
+    .cfg-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+    .cfg-apply-btn {
+      padding: 0.18rem 0.55rem;
+      line-height: 1.3;
+      border-radius: 999px;
+      font-size: 0.7rem;
+    }
+    .cfg-status {
+      font-size: 0.72rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .cfg-status.ok {
+      color: var(--green);
+    }
+    .cfg-status.error {
+      color: var(--red);
+    }
     .mock-group { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; font-size: 0.78rem; color: var(--muted); }
     .toggle { position: relative; width: 38px; height: 21px; flex-shrink: 0; }
     .toggle input { opacity: 0; width: 0; height: 0; }
@@ -169,17 +194,9 @@
       gap: 0.6rem; margin-bottom: 0.75rem;
     }
     .telem-row {
-      justify-content: space-between;
+      justify-content: flex-end;
       align-items: center;
       gap: 0.75rem;
-    }
-    .telem-left {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      min-height: 28px;
-      flex: 1;
-      min-width: 0;
     }
     .telem-right {
       display: flex;
@@ -188,45 +205,6 @@
       gap: 0.55rem;
       min-height: 28px;
       white-space: nowrap;
-    }
-    .telem-counter-strip {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.45rem;
-      min-width: 0;
-    }
-    .telem-pill {
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--muted);
-      border-radius: 999px;
-      font-size: 0.68rem;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-      line-height: 1;
-      padding: 0.25rem 0.52rem;
-      display: inline-flex;
-      align-items: baseline;
-      gap: 0.28rem;
-    }
-    .telem-pill .value {
-      color: var(--text);
-      font-size: 0.78rem;
-      font-weight: 700;
-      text-transform: none;
-      letter-spacing: normal;
-    }
-    .telem-pill.alerts .value,
-    .telem-pill.blocked .value,
-    .telem-pill.banned .value {
-      color: var(--red);
-    }
-    .telem-pill.high .value {
-      color: var(--yellow);
-    }
-    .telem-pill.flows .value {
-      color: var(--blue);
     }
     .btn-sm {
       background: none; border: 1px solid var(--border);
@@ -240,7 +218,8 @@
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.7rem; margin-bottom: 0.85rem; }
     .card {
       background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 0.7rem 0.8rem;
+      border-radius: 12px; padding: 0.72rem 0.84rem;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
     }
     .card-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
     .card-value { font-size: 1.75rem; font-weight: 700; line-height: 1; }
@@ -253,7 +232,8 @@
     /* ── Panels and grids ── */
     .panel {
       background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 0.72rem; margin-bottom: 0.75rem;
+      border-radius: 12px; padding: 0.72rem; margin-bottom: 0.75rem;
+      box-shadow: 0 12px 26px rgba(0, 0, 0, 0.14);
     }
     #tab-control .panel,
     #tab-control .card {
@@ -373,19 +353,40 @@
       border-radius: 6px;
       padding: 0.65rem;
     }
+    .telemetry-overview-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(320px, 520px);
+      gap: 0.8rem;
+      align-items: start;
+      margin-bottom: 0.85rem;
+    }
+    .telemetry-summary-wrap {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.72rem;
+      box-shadow: 0 12px 26px rgba(0, 0, 0, 0.14);
+    }
+    .telemetry-cards {
+      margin-bottom: 0;
+      grid-template-columns: repeat(3, minmax(130px, 1fr));
+    }
+    .telemetry-cards .card {
+      min-height: 104px;
+      display: grid;
+      align-content: space-between;
+      gap: 0.35rem;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+    }
     .telemetry-ban-controls {
-      width: min(520px, 100%);
+      width: 100%;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: 12px;
       padding: 0.65rem;
       display: grid;
       gap: 0.6rem;
-    }
-    .telem-ban-row {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 0.75rem;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
     }
     .telemetry-ban-controls .field-block {
       min-width: 118px;
@@ -404,21 +405,25 @@
     }
     @media (max-width: 900px) {
       .telem-row {
-        flex-direction: column;
-        align-items: stretch;
+        justify-content: flex-end;
       }
       .telem-right {
-        width: 100%;
-        justify-content: space-between;
+        width: auto;
+        justify-content: flex-end;
       }
-      .telem-counter-strip {
-        width: 100%;
+      .telemetry-overview-shell {
+        grid-template-columns: 1fr;
+      }
+      .telemetry-cards {
+        grid-template-columns: repeat(2, minmax(130px, 1fr));
       }
       .telemetry-ban-controls {
         width: 100%;
       }
-      .telem-ban-row {
-        justify-content: stretch;
+    }
+    @media (max-width: 620px) {
+      .telemetry-cards {
+        grid-template-columns: 1fr;
       }
     }
     .ban-window {
@@ -646,6 +651,10 @@
     <label for="api-token">API Token</label>
     <input type="password" id="api-token" placeholder="Enter token">
   </div>
+  <div class="cfg-actions">
+    <button class="btn-sm cfg-apply-btn" id="btn-api-apply" title="Apply API URL and token">Apply</button>
+    <span class="cfg-status" id="api-config-status">Mock mode active.</span>
+  </div>
   <div class="mock-group">
     <span>Mock&nbsp;Mode</span>
     <label class="toggle">
@@ -756,21 +765,16 @@
   <!-- ═══════════════════════════════════════ TELEMETRY ═══ -->
   <div class="tab-panel" id="tab-telemetry">
     <div class="row-bar telem-row">
-      <div class="telem-left">
-        <div class="telem-counter-strip">
-          <span class="telem-pill alerts">Alerts <span class="value" id="telem-total-alerts">0</span></span>
-          <span class="telem-pill blocked">Blocked <span class="value" id="telem-blocked">0</span></span>
-          <span class="telem-pill banned">Banned Drops <span class="value" id="telem-banned-drops">0</span></span>
-          <span class="telem-pill high">High Sev <span class="value" id="telem-high-sev">0</span></span>
-          <span class="telem-pill flows">Flows <span class="value" id="telem-active-flows">0</span></span>
-        </div>
-      </div>
       <div class="telem-right">
         <span id="telem-ts"></span>
         <button class="btn-sm" onclick="refreshTelemetry()">&#8635; Refresh</button>
       </div>
     </div>
-    <div class="telem-ban-row">
+    <div class="telemetry-overview-shell">
+      <div class="telemetry-summary-wrap">
+        <div class="panel-title">Telemetry Snapshot</div>
+        <div class="cards telemetry-cards" id="summary-cards"></div>
+      </div>
       <div class="telemetry-ban-controls">
         <div class="panel-title">Blue Team Containment</div>
         <div class="control-row">
@@ -794,7 +798,6 @@
         <div class="meta-box ban-window" id="blue-ban-box">No active blue-team bans.</div>
       </div>
     </div>
-    <div class="cards" id="summary-cards"></div>
     <div class="grid-2">
       <div class="panel">
         <div class="panel-title-row">
@@ -915,15 +918,15 @@
 // ───────────────────────────────────────────────────────────
 const SCEN_DESCS = {
   tcp_syn_burst:       'Sends 500 TCP SYN packets to the target to simulate a SYN flood or port scan.',
-  web_scan:            'Runs Nikto probes and curl-based injection strings against the Ubuntu Apache2 HTTP target.',
+  web_scan:            'Runs Nikto probes and curl-based injection strings against the Ubuntu DVWA target (Apache2 + PHP + MariaDB).',
   ssh_bruteforce_sim:  'Issues 25 SSH login attempts in quick succession to simulate a brute force.',
-  sql_injection_sim:   'Sends SQLi payloads via Ubuntu Apache2 HTTP paths to trigger IDS signatures.',
+  sql_injection_sim:   'Sends SQLi payloads to the DVWA /vulnerabilities/sqli/ endpoint to trigger IDS signatures.',
   udp_flood:           'Sends a short UDP burst for L4 volumetric testing and rate-limit checks.',
   icmp_flood:          'Sends ICMP burst traffic to exercise L3 controls and telemetry visibility.',
   fin_scan:            'Runs a FIN scan to extend transport-layer reconnaissance coverage.',
-  slow_http:           'Opens slow Ubuntu Apache2 HTTP connections to test low-rate application DoS handling.',
-  credential_stuffing_http: 'Attempts repeated credential login abuse patterns over Ubuntu Apache2 HTTP endpoints.',
-  command_injection_probe:  'Sends command-injection payload patterns over Ubuntu Apache2 query and POST inputs.',
+  slow_http:           'Opens slow HTTP connections to the Ubuntu DVWA server to test low-rate application DoS handling.',
+  credential_stuffing_http: 'Attempts repeated credential login abuse patterns against the DVWA login form and brute-force module.',
+  command_injection_probe:  'Sends command-injection payloads to the DVWA /vulnerabilities/exec/ POST endpoint.',
 };
 
 const SCEN_META = {
@@ -946,10 +949,13 @@ let selectedRunId = null;
 let appReady = false;
 let expandedScenarioId = null;
 let latestBanRows = [];
+let mockBanRows = [];
 const releasedBanRows = new Map();
 const LOGIN_USER = 'admin';
 const LOGIN_PASS = 'rbbd';
 const THEME_STORAGE_KEY = 'ngfw_dashboard_theme';
+const API_BASE_STORAGE_KEY = 'ngfw_dashboard_api_base';
+const API_TOKEN_SESSION_KEY = 'ngfw_dashboard_api_token';
 let scenarioCatalog = Object.entries(SCEN_DESCS).map(([id, description]) => ({
   id,
   label: id.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()),
@@ -977,8 +983,8 @@ let kaliNetworkState = { ...controlConfig.kali_network };
 // ───────────────────────────────────────────────────────────
 //  Helpers
 // ───────────────────────────────────────────────────────────
-function apiBase() { return (document.getElementById('api-url').value || '').replace(/\/$/, ''); }
-function apiToken() { return document.getElementById('api-token').value || ''; }
+function apiBase() { return (document.getElementById('api-url').value || '').trim().replace(/\/$/, ''); }
+function apiToken() { return (document.getElementById('api-token').value || '').trim(); }
 function isMock()  { return document.getElementById('mock-toggle').checked; }
 function targetIp() { return document.getElementById('target-ip').value || '192.168.50.10'; }
 function banIp() { return document.getElementById('ban-ip').value || ''; }
@@ -988,8 +994,69 @@ function refreshIntervalMs() { return Number(document.getElementById('refresh-ms
 function eventsLimit() { return Number(document.getElementById('events-limit')?.value || '100'); }
 function mlLimit() { return Number(document.getElementById('ml-limit')?.value || '100'); }
 
+function hasLiveApiConfig() {
+  return Boolean(apiBase() && apiToken());
+}
+
+function setApiConfigStatus(message, level = '') {
+  const el = document.getElementById('api-config-status');
+  if (!el) return;
+  el.textContent = String(message || '');
+  el.classList.remove('ok', 'error');
+  if (level === 'ok') el.classList.add('ok');
+  if (level === 'error') el.classList.add('error');
+}
+
+function normalizeApiInputs() {
+  const baseInput = document.getElementById('api-url');
+  const tokenInput = document.getElementById('api-token');
+  if (baseInput) {
+    baseInput.value = (baseInput.value || '').trim().replace(/\/$/, '');
+    localStorage.setItem(API_BASE_STORAGE_KEY, baseInput.value);
+  }
+  if (tokenInput) {
+    tokenInput.value = (tokenInput.value || '').trim();
+    sessionStorage.setItem(API_TOKEN_SESSION_KEY, tokenInput.value);
+  }
+}
+
+async function applyLiveConnectionSettings(refresh = true) {
+  normalizeApiInputs();
+  if (isMock()) {
+    setApiConfigStatus('Mock mode active.', '');
+    return;
+  }
+  if (!apiBase()) {
+    setApiConfigStatus('Enter API URL then Apply.', 'error');
+    return;
+  }
+  if (!apiToken()) {
+    setApiConfigStatus('Enter API token then Apply.', 'error');
+    return;
+  }
+  setApiConfigStatus('Live settings applied.', 'ok');
+  if (!refresh || !appReady) return;
+  await refreshControlState();
+  const active = document.querySelector('.tab-btn.active')?.dataset.tab;
+  if (active === 'telemetry') await refreshTelemetry();
+  if (active === 'ml') await refreshML();
+}
+
 function fmtTime(isoStr) {
-  try { return new Date(isoStr).toLocaleTimeString(); } catch { return isoStr; }
+  try {
+    const parsed = new Date(isoStr);
+    if (Number.isNaN(parsed.getTime())) return String(isoStr ?? '');
+    return parsed.toLocaleString([], {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    return String(isoStr ?? '');
+  }
 }
 
 function rnd(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
@@ -1105,21 +1172,6 @@ function severityHintBadge(level) {
   return badge('MED', 'b-med');
 }
 
-function updateTelemetryCounterStrip(summary) {
-  const safe = summary || {};
-  const counters = {
-    'telem-total-alerts': safe.total_alerts ?? 0,
-    'telem-blocked': safe.blocked ?? 0,
-    'telem-banned-drops': safe.banned_drop_attempts ?? 0,
-    'telem-high-sev': safe.high_sev ?? 0,
-    'telem-active-flows': safe.active_flows ?? 0,
-  };
-  Object.entries(counters).forEach(([id, value]) => {
-    const node = document.getElementById(id);
-    if (node) node.textContent = String(value);
-  });
-}
-
 function actionBadge(a) {
   const v = String(a).toLowerCase();
   if (['block','drop','reject'].includes(v)) return badge(v.toUpperCase(), 'b-block');
@@ -1221,15 +1273,33 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ───────────────────────────────────────────────────────────
 //  Mock toggle
 // ───────────────────────────────────────────────────────────
-document.getElementById('mock-toggle').addEventListener('change', function () {
+document.getElementById('mock-toggle').addEventListener('change', async function () {
   const dot   = document.getElementById('conn-dot');
   const label = document.getElementById('conn-label');
   if (this.checked) {
     dot.classList.add('offline');
     label.textContent = 'Mock Mode';
+    setApiConfigStatus('Mock mode active.', '');
   } else {
     dot.classList.remove('offline');
     label.textContent = 'Live Mode';
+    if (!hasLiveApiConfig()) {
+      setApiConfigStatus('Enter API URL/token and click Apply.', 'error');
+    } else {
+      setApiConfigStatus('Live mode selected.', 'ok');
+    }
+  }
+  releasedBanRows.clear();
+  if (!appReady) {
+    return;
+  }
+  await refreshControlState();
+  const active = document.querySelector('.tab-btn.active')?.dataset.tab;
+  if (active === 'telemetry') {
+    await refreshTelemetry();
+  }
+  if (active === 'ml') {
+    await refreshML();
   }
 });
 
@@ -1433,12 +1503,48 @@ document.getElementById('btn-master-stop').addEventListener('click', stopAllRuns
 document.getElementById('btn-control-refresh').addEventListener('click', refreshControlState);
 document.getElementById('btn-kali-ip-apply').addEventListener('click', assignKaliIp);
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+document.getElementById('btn-api-apply').addEventListener('click', () => {
+  void applyLiveConnectionSettings(true);
+});
+document.getElementById('api-url').addEventListener('input', () => {
+  if (!isMock()) setApiConfigStatus('Edited. Press Apply.', '');
+});
+document.getElementById('api-token').addEventListener('input', () => {
+  if (!isMock()) setApiConfigStatus('Edited. Press Apply.', '');
+});
+['api-url', 'api-token'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    void applyLiveConnectionSettings(true);
+  });
+});
 document.getElementById('btn-ban').addEventListener('click', async () => {
   const box = document.getElementById('firewall-status-box');
   const ipAddress = banIp();
   const duration = Number(document.getElementById('ban-duration').value || '60');
   if (!ipAddress) return;
   if (isMock()) {
+    const activeExisting = mockBanRows.find(item => item.ip === ipAddress && String(item.status || '').toLowerCase() === 'active');
+    if (activeExisting) {
+      box.textContent = `Mock ban already active for ${ipAddress}.`;
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    mockBanRows = [
+      {
+        ban_id: `mock-${Math.random().toString(36).slice(2, 8)}`,
+        ip: ipAddress,
+        reason: 'mock_dashboard_block',
+        created_at: nowIso,
+        expires_at: new Date(Date.now() + (duration * 60000)).toISOString(),
+        duration_minutes: duration,
+        status: 'active',
+        hook_mode: 'mock',
+      },
+      ...mockBanRows,
+    ];
+    renderBanLog(mockBanRows, { persistLive: false });
     box.textContent = `Mock ban applied for ${ipAddress} (${duration} min).`;
     return;
   }
@@ -1460,12 +1566,12 @@ document.getElementById('btn-unban').addEventListener('click', async () => {
   const ipAddress = banIp();
   if (!ipAddress) return;
   if (isMock()) {
-    const existing = latestBanRows.find(item => item.ip === ipAddress) || { ip: ipAddress, duration_minutes: 0 };
-    latestBanRows = latestBanRows.map(item =>
+    const existing = mockBanRows.find(item => item.ip === ipAddress) || { ip: ipAddress, duration_minutes: 0 };
+    mockBanRows = mockBanRows.map(item =>
       item.ip === ipAddress ? { ...item, status: 'released', released_at: new Date().toISOString() } : item,
     );
-    rememberReleasedBan(existing, 'mock_dashboard_release');
-    renderBanLog(latestBanRows);
+    rememberReleasedBan(existing, 'mock_dashboard_release', { persistLive: false });
+    renderBanLog(mockBanRows, { persistLive: false });
     box.textContent = `Mock unban applied for ${ipAddress}.`;
     return;
   }
@@ -1636,7 +1742,8 @@ function formatBanRemaining(entry) {
   return `${remainingMinutes}m left`;
 }
 
-function rememberReleasedBan(entry, reason = 'dashboard_list_release') {
+function rememberReleasedBan(entry, reason = 'dashboard_list_release', options = {}) {
+  const persistLive = options.persistLive !== false;
   const key = banRowKey(entry);
   releasedBanRows.set(key, {
     ...entry,
@@ -1647,7 +1754,11 @@ function rememberReleasedBan(entry, reason = 'dashboard_list_release') {
   });
   window.setTimeout(() => {
     releasedBanRows.delete(key);
-    renderBanLog(latestBanRows);
+    if (persistLive) {
+      renderBanLog(latestBanRows);
+    } else {
+      renderBanLog(mockBanRows, { persistLive: false });
+    }
   }, 5100);
 }
 
@@ -1657,11 +1768,11 @@ async function releaseBanFromList(entry) {
   if (!ipAddress) return;
 
   if (isMock()) {
-    latestBanRows = latestBanRows.map(item =>
+    mockBanRows = mockBanRows.map(item =>
       item.ip === ipAddress ? { ...item, status: 'released', released_at: new Date().toISOString() } : item,
     );
-    rememberReleasedBan(entry, 'mock_dashboard_list_release');
-    renderBanLog(latestBanRows);
+    rememberReleasedBan(entry, 'mock_dashboard_list_release', { persistLive: false });
+    renderBanLog(mockBanRows, { persistLive: false });
     if (box) box.textContent = `Mock unban applied for ${ipAddress}.`;
     return;
   }
@@ -1696,17 +1807,21 @@ async function releaseBanFromList(entry) {
   }
 }
 
-function renderBanLog(rows) {
-  latestBanRows = Array.isArray(rows) ? rows.slice() : [];
+function renderBanLog(rows, options = {}) {
+  const persistLive = options.persistLive !== false;
+  const normalizedRows = Array.isArray(rows) ? rows.slice() : [];
+  if (persistLive) {
+    latestBanRows = normalizedRows;
+  }
   const redBanBox = document.getElementById('red-ban-box');
   const blueBanBox = document.getElementById('blue-ban-box');
   if (!redBanBox && !blueBanBox) return;
-  const activeRows = latestBanRows.filter(item => String(item.status || '').toLowerCase() === 'active');
+  const activeRows = normalizedRows.filter(item => String(item.status || '').toLowerCase() === 'active');
   const now = Date.now();
   const releasedRows = Array.from(releasedBanRows.values()).filter(item => Number(item._fade_until || 0) > now);
   const windows = [
-    { node: redBanBox, empty: 'No active red-team bans.' },
-    { node: blueBanBox, empty: 'No active blue-team bans.' },
+    { node: redBanBox, empty: 'No active red-team bans.', allowRelease: false },
+    { node: blueBanBox, empty: 'No active blue-team bans.', allowRelease: true },
   ].filter(item => item.node);
 
   if (!activeRows.length && !releasedRows.length) {
@@ -1725,14 +1840,18 @@ function renderBanLog(rows) {
       const text = document.createElement('div');
       text.className = 'ban-item-text';
       text.textContent = `ID ${shortBanId(entry)} | ${entry.ip} | ${entry.duration_minutes || 0}m configured | ${formatBanRemaining(entry)}`;
-      const releaseBtn = document.createElement('button');
-      releaseBtn.className = 'ban-release-btn';
-      releaseBtn.textContent = 'Release';
-      releaseBtn.addEventListener('click', () => {
-        releaseBtn.disabled = true;
-        releaseBanFromList(entry);
-      });
-      row.append(text, releaseBtn);
+      if (item.allowRelease) {
+        const releaseBtn = document.createElement('button');
+        releaseBtn.className = 'ban-release-btn';
+        releaseBtn.textContent = 'Release';
+        releaseBtn.addEventListener('click', () => {
+          releaseBtn.disabled = true;
+          releaseBanFromList(entry);
+        });
+        row.append(text, releaseBtn);
+      } else {
+        row.append(text);
+      }
       item.node.appendChild(row);
     });
 
@@ -1778,12 +1897,20 @@ async function refreshControlState() {
     renderScenarioCatalog();
     renderRunLog();
     renderActiveRunBox();
-    renderBanLog([{ ban_id: 'mock-ban-1', ip: '192.168.60.10', duration_minutes: 60, expires_at: new Date(Date.now() + 3600_000).toISOString(), status: 'active' }]);
+    renderBanLog(mockBanRows, { persistLive: false });
     renderKaliNetworkState();
     renderRunCapacity();
     firewallBox.textContent = 'Mock mode: firewall hooks are simulated.';
+    setApiConfigStatus('Mock mode active.', '');
     return;
   }
+
+  if (!hasLiveApiConfig()) {
+    firewallBox.textContent = 'Live mode idle: enter API URL and token, then click Apply.';
+    setApiConfigStatus('Enter API URL/token and click Apply.', 'error');
+    return;
+  }
+
   try {
     const [config, status, bans, runs, kaliNetwork] = await Promise.all([
       apiFetch('/config'),
@@ -1812,8 +1939,10 @@ async function refreshControlState() {
     renderKaliNetworkState();
     renderRunCapacity();
     firewallBox.textContent = `Ban hook enabled: ${status.ban_hook_enabled}\nUnban hook enabled: ${status.unban_hook_enabled}\nActive bans: ${status.active_bans}`;
+    setApiConfigStatus('Connected to live API.', 'ok');
   } catch (err) {
     firewallBox.textContent = 'Error: ' + err.message;
+    setApiConfigStatus('Live API error. Check URL/token and Apply again.', 'error');
   }
 }
 
@@ -2052,7 +2181,10 @@ async function refreshTelemetry() {
   if (isMock()) {
     events = mockEvents(eventLimit);
     summary = summarizeTelemetryEvents(events, bucketSeconds);
-    bans = latestBanRows;
+    bans = mockBanRows;
+  } else if (!hasLiveApiConfig()) {
+    document.getElementById('telem-ts').textContent = 'Live mode idle: set URL/token and click Apply.';
+    return;
   } else {
     try {
       [summary, events, bans] = await Promise.all([
@@ -2072,11 +2204,10 @@ async function refreshTelemetry() {
     banned_drop_attempts: bannedDrops,
   };
   if (Array.isArray(bans)) {
-    renderBanLog(bans);
+    renderBanLog(bans, { persistLive: !isMock() });
   }
 
   renderSummaryCards(summary);
-  updateTelemetryCounterStrip(summary);
   renderTimeline(summary);
   renderSeverity(summary);
   renderSources(summary);
@@ -2232,6 +2363,9 @@ async function refreshML() {
   if (isMock()) {
     mlSummary = mockMLSummary();
     mlRows    = mockMLRows(limit);
+  } else if (!hasLiveApiConfig()) {
+    document.getElementById('ml-ts').textContent = 'Live mode idle: set URL/token and click Apply.';
+    return;
   } else {
     try {
       [mlSummary, mlRows] = await Promise.all([
@@ -2368,6 +2502,7 @@ function initApp() {
   if (appReady) return;
   appReady = true;
   document.getElementById('conn-dot').classList.add('offline');
+  setApiConfigStatus(isMock() ? 'Mock mode active.' : 'Live mode selected. Click Apply.');
   setSelectedRun(null, null);
   refreshControlState();
   refreshTelemetry();
@@ -2397,7 +2532,16 @@ document.getElementById('login-form').addEventListener('submit', event => {
 //  Init
 // ───────────────────────────────────────────────────────────
 (function init() {
+  const savedApiBase = localStorage.getItem(API_BASE_STORAGE_KEY);
+  const savedToken = sessionStorage.getItem(API_TOKEN_SESSION_KEY);
+  if (savedApiBase) {
+    document.getElementById('api-url').value = savedApiBase;
+  }
+  if (savedToken) {
+    document.getElementById('api-token').value = savedToken;
+  }
   applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || 'dark');
+  setApiConfigStatus(document.getElementById('mock-toggle').checked ? 'Mock mode active.' : 'Live mode selected. Click Apply.');
   document.getElementById('login-user').focus();
 })();
 </script>

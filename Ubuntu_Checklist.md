@@ -48,11 +48,10 @@ Expected: `ubuntu-lab` is listed as running.
 
 If not running, create and start it exactly:
 
+Do not change flags, network, IP, or mount path in this baseline command if your environment already depends on it.
+
 ```bash
-sudo podman run -d --name ubuntu-lab --replace \
-  --cap-add=NET_RAW --cap-add=NET_BIND_SERVICE \
-  --network lan1 --ip 192.168.50.10 \
-  ubuntu sleep infinity
+sudo podman run -d --name ubuntu-lab --replace --cap-add=NET_RAW --cap-add=NET_BIND_SERVICE --network lan1 --ip 192.168.50.10 -v ./10-opnsense.conf:/etc/rsyslog.d/10-opnsense.conf:ro -v ./lab/logs:/var/log -v /opt/dev/ubuntu-src:/app ubuntu-lab:custom rsyslogd -n
 ```
 
 ### 1.2 Get a Shell into Ubuntu
@@ -98,7 +97,8 @@ Expected: replies from `192.168.50.1`.
 ```bash
 apt update
 apt -y upgrade
-apt install -y apache2 curl rsyslog tcpdump python3 python3-venv python3-pip git jq netcat-openbsd nano
+apt install -y apache2 curl rsyslog tcpdump python3 python3-venv python3-pip git jq netcat-openbsd nano \
+  php php-mysqli php-gd php-xml libapache2-mod-php mariadb-server
 ```
 
 Expected: command completes without package dependency errors.
@@ -115,18 +115,24 @@ Expected: Python 3.10+ is available.
 
 ---
 
-## 3. Start Apache (Attack Target Service)
+## 3. Start Apache and Deploy DVWA (Attack Target Service)
 
-### 3.1 Start and Enable Apache
+DVWA (Damn Vulnerable Web Application) replaces the plain Apache2 default page as the attack target. It
+provides realistic web-application endpoints (SQLi, command injection, brute force, XSS, file inclusion)
+that the Kali scenario scripts exploit. Apache2 is still the web server; DVWA runs on top of it.
+
+### 3.1 Start Apache and MariaDB
 
 `[ubuntu]`:
 
 ```bash
+service mariadb start
 service apache2 start
 service apache2 status --no-pager || true
+service mariadb status --no-pager || true
 ```
 
-Expected: Apache is active.
+Expected: both services show **active (running)**.
 
 ### 3.2 Verify Apache Responds Locally
 
@@ -136,18 +142,93 @@ Expected: Apache is active.
 curl -I http://127.0.0.1
 ```
 
-Expected: HTTP status header is returned.
+Expected: HTTP status header returned.
 
-### 3.3 Verify Apache Responds from Kali
+### 3.3 Create DVWA Database and User
+
+`[ubuntu]`:
+
+```bash
+mysql -u root << 'SQL'
+CREATE DATABASE IF NOT EXISTS dvwa;
+CREATE USER IF NOT EXISTS 'dvwa'@'localhost' IDENTIFIED BY 'p@ssw0rd';
+GRANT ALL PRIVILEGES ON dvwa.* TO 'dvwa'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+```
+
+Expected: no MySQL errors.
+
+### 3.4 Clone and Configure DVWA
+
+`[ubuntu]`:
+
+```bash
+git clone https://github.com/digininja/DVWA.git /var/www/html/dvwa
+```
+
+Write the DVWA config file:
+
+```bash
+cat > /var/www/html/dvwa/config/config.inc.php << 'EOF'
+<?php
+$_DVWA = array();
+$_DVWA[ 'db_server' ]   = '127.0.0.1';
+$_DVWA[ 'db_database' ] = 'dvwa';
+$_DVWA[ 'db_user' ]     = 'dvwa';
+$_DVWA[ 'db_password' ] = 'p@ssw0rd';
+$_DVWA[ 'db_port']      = '3306';
+$_DVWA[ 'default_security_level' ] = 'low';
+$_DVWA[ 'security_level' ]         = 'low';
+$_DVWA[ 'recaptcha_public_key' ]   = '';
+$_DVWA[ 'recaptcha_private_key' ]  = '';
+$_DVWA[ 'default_phpids_level' ]   = 'disabled';
+$_DVWA[ 'default_phpids_verbose' ] = 'false';
+?>
+EOF
+```
+
+### 3.5 Set File Permissions
+
+`[ubuntu]`:
+
+```bash
+chown -R www-data:www-data /var/www/html/dvwa
+chmod -R 755 /var/www/html/dvwa
+chmod -R 777 /var/www/html/dvwa/hackable/uploads
+chmod -R 777 /var/www/html/dvwa/config
+service apache2 restart
+```
+
+Expected: no errors; Apache restarts.
+
+### 3.6 Initialize DVWA Database (Browser Step)
+
+From your **Windows host** browser:
+
+1. Open `http://192.168.50.10/dvwa/setup.php`
+2. Scroll to the bottom and click **Create / Reset Database**.
+3. DVWA redirects to the login page automatically.
+
+Expected: green status rows for all PHP extensions; no red errors.
+
+> **Troubleshooting:**
+> - `php-xml not loaded` → run `apt install -y php-xml` then `service apache2 restart`
+> - `Could not connect to database` → confirm MariaDB is running: `service mariadb status`
+> - `404 on /dvwa/` → confirm the clone landed at `/var/www/html/dvwa/index.php`
+
+### 3.7 Verify DVWA from Kali
 
 `[kali]`:
 
 ```bash
-curl -I http://192.168.50.10
+curl -s -o /dev/null -w "%{http_code}" http://192.168.50.10/dvwa/login.php
 nc -zv 192.168.50.10 80
 ```
 
-Expected: HTTP response and open TCP/80 check.
+Expected: HTTP `200` and TCP/80 open.
+
+Default DVWA credentials: **admin / password** (security level: **Low**).
 
 ---
 
@@ -229,7 +310,7 @@ Expected: recent firewall/suricata entries are present.
 Day 1 is complete only if all are true:
 
 1. Ubuntu container networking is correct.
-2. Apache is reachable from Kali.
+2. DVWA is accessible from Kali at `http://192.168.50.10/dvwa/login.php`.
 3. rsyslog listeners are active.
 4. OPNsense logs are present in `/var/log/opnsense.log`.
 
@@ -286,22 +367,24 @@ server:
   http_listen_port: 3100
 
 ingester:
+  wal:
+    enabled: true
+    dir: /loki/wal
   lifecycler:
     address: 127.0.0.1
     ring:
       kvstore:
         store: inmemory
       replication_factor: 1
-    final_sleep: 0s
-  chunk_idle_period: 5m
-  chunk_retain_period: 30s
+  chunk_idle_period: 3m
+  chunk_retain_period: 1m
 
 schema_config:
   configs:
     - from: 2024-01-01
       store: boltdb-shipper
       object_store: filesystem
-      schema: v13
+      schema: v11
       index:
         prefix: index_
         period: 24h
@@ -310,13 +393,12 @@ storage_config:
   boltdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/cache
+    shared_store: filesystem
   filesystem:
     directory: /loki/chunks
 
 limits_config:
-  enforce_metric_name: false
-  reject_old_samples: true
-  reject_old_samples_max_age: 168h
+  reject_old_samples: false
 
 chunk_store_config:
   max_look_back_period: 0s
@@ -324,6 +406,10 @@ chunk_store_config:
 table_manager:
   retention_deletes_enabled: false
   retention_period: 0s
+
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
 EOF
 ```
 
@@ -350,7 +436,6 @@ scrape_configs:
           - localhost
         labels:
           job: opnsense
-          host: debian
           __path__: /var/log/opnsense.log
 EOF
 ```
@@ -361,39 +446,47 @@ EOF
 
 ```bash
 cat > ~/lab/siem/compose.yaml << 'EOF'
+version: "3"
+
 services:
   loki:
-    image: grafana/loki:2.9.8
-    container_name: loki
-    command: -config.file=/etc/loki/local-config.yaml
-    volumes:
-      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
-      - ./loki/data:/loki
+    image: grafana/loki:2.9.0
+    user: "0:0"
     ports:
       - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
 
   promtail:
-    image: grafana/promtail:2.9.8
-    container_name: promtail
-    command: -config.file=/etc/promtail/config.yaml
+    image: docker.io/grafana/promtail:2.9.0
     volumes:
-      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
-      - ~/lab/logs/opnsense.log:/var/log/opnsense.log:ro
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yml
+      - /home/vbox/lab/logs/opnsense.log:/var/log/opnsense.log:ro
+    command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
+    restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:11.0.0
-    container_name: grafana
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    volumes:
-      - ./grafana-data:/var/lib/grafana
+    image: grafana/grafana:10.0.0
     ports:
       - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+    volumes:
+      - grafana_data:/var/lib/grafana
     depends_on:
       - loki
+    restart: unless-stopped
+
+volumes:
+  loki_data:
+  grafana_data:
 EOF
 ```
 
@@ -414,15 +507,14 @@ Expected: `loki`, `promtail`, `grafana` are running.
 `[debian]`:
 
 ```bash
-mkdir -p ~/lab/siem/loki/data ~/lab/siem/grafana-data
-chmod -R 777 ~/lab/siem/loki/data ~/lab/siem/grafana-data
 podman-compose down
+podman volume rm siem_loki_data || true
 podman-compose up -d
 ```
 
 ### 6.7 Access Grafana
 
-Open `http://192.168.50.2:3000` and log in with `admin/admin`.
+Open `http://192.168.50.2:3000`. Anonymous viewer access is enabled by default. To log in as admin use the default Grafana credentials (`admin` / `admin`) and change the password when prompted.
 
 ### 6.8 Add Loki Data Source in Grafana
 
@@ -550,7 +642,7 @@ MAX_CONCURRENT_RUNS='3'
 OPNSENSE_LOG_PATH="$HOME/lab/logs/opnsense.log"
 TELEMETRY_EXCLUDED_IPS='192.168.50.1,192.168.50.2,192.168.60.1,192.168.60.2'
 DASHBOARD_ACTION_LOG_PATH="$HOME/lab/control-api/state/dashboard_actions.log"
-CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1,http://192.168.50.10:8888'
+CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1,http://10.114.175.3:5000'
 OPNSENSE_BAN_ALIAS_TABLE='AUTO_BAN_IPS'
 OPNSENSE_KALI_ALIAS_TABLE='KALI_HOST'
 OPNSENSE_API_TIMEOUT_SECONDS='4'
@@ -747,9 +839,17 @@ Open `http://192.168.50.2:8888`.
 
 ## Day 3 - ML Pipeline
 
+**What this day accomplishes:** You will teach a machine learning model what normal and attack traffic looks like based on the logs you have already collected. The pipeline has three steps: (1) parse the raw OPNsense log into a structured table, (2) train two models on that table, (3) run those models against all events and write a predictions file the dashboard reads. You do not need any ML background — just follow each step in order.
+
+---
+
 ## 9. Set Up Python ML Environment
 
-### 9.1 Create ML Directory
+### 9.1 What is a virtual environment and why do we create one?
+
+A Python virtual environment (`venv`) is an isolated folder that holds its own Python packages. It means the `pandas`, `scikit-learn`, and other ML packages you install here will not interfere with any other Python tools on the system, and they will not accidentally update something the control API depends on. Every time you want to work with the ML pipeline you first activate the venv (step 9.1), then all `python` and `pip` commands use that isolated environment.
+
+### 9.2 Copy ML Scripts and Install Dependencies
 
 `[debian]`:
 
@@ -777,7 +877,20 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 9.2 Verify Installs
+What each line does:
+
+1. The `for` loop searches known shared-folder paths to find where the repo is mounted inside Debian. It sets `REPO_SYNC` to the first one it finds. This is the same auto-detect pattern used in section 7.1.
+2. `mkdir -p ~/lab/ml` creates the working directory for ML. `-p` means it will not error if it already exists.
+3. The two `cp` commands copy the three Python scripts (`parse_logs.py`, `train.py`, `infer.py`) and `requirements.txt` from your repo into the ML working directory.
+4. `python3 -m venv .venv` creates the virtual environment inside a hidden folder called `.venv` inside `~/lab/ml`.
+5. `source .venv/bin/activate` turns on the virtual environment for this terminal session. Your prompt will change to show `(.venv)` at the start.
+6. `pip install -r requirements.txt` reads the requirements file and installs: `pandas` (table manipulation), `numpy` (numbers), `scikit-learn` (the ML library), `joblib` (saving/loading trained models to disk).
+
+This may take 2–5 minutes on first run as packages are downloaded.
+
+Expected output ends with lines like `Successfully installed pandas-X.X numpy-X.X scikit-learn-X.X joblib-X.X`.
+
+### 9.3 Verify Installs
 
 `[debian]`:
 
@@ -787,11 +900,30 @@ source .venv/bin/activate
 python -c "import pandas, numpy, sklearn, joblib; print('ml_deps_ok')"
 ```
 
+Expected output: `ml_deps_ok` on a single line. If you see an `ImportError`, the install failed. Re-run `pip install -r requirements.txt` inside the activated venv.
+
 ---
 
 ## 10. Collect and Parse Training Data
 
-### 10.1 Export OPNsense Log to CSV for Training
+### 10.1 What does parse_logs.py do?
+
+`parse_logs.py` reads every line of `/home/vbox/lab/logs/opnsense.log` and converts each line into a row of structured data. For each log line it extracts:
+
+1. `src_ip` — the source IP address.
+2. `dst_ip` — the destination IP address.
+3. `dst_port` — the destination port number.
+4. `proto` — TCP, UDP, or ICMP.
+5. `action` — whether the packet was blocked, alerted on, or passed.
+6. `signature` — the Suricata rule message if one fired, otherwise the raw line.
+7. `severity` — low, medium, or high, parsed from the log line keywords.
+8. `label` — set to `unknown` by the script. You will fill this in manually in the next step.
+
+All of these rows get written to a CSV file called `features.csv`. A CSV is a spreadsheet-style text file where each row is one log event and each column is one field. This is the format that the ML training script reads.
+
+### 10.2 Run the Parser
+
+You need to have collected logs first. Make sure you have run at least a few attack scenarios from the dashboard before this step so that the log file has meaningful content.
 
 `[debian]`:
 
@@ -803,19 +935,109 @@ wc -l ~/lab/ml/features.csv
 head -n 5 ~/lab/ml/features.csv
 ```
 
-### 10.2 Manually Label Rows Using run_id Log
+What each command does:
 
-1. Open `~/lab/ml/features.csv` in spreadsheet editor.
-2. Set `label` values for known runs (for example: `benign`, `scan`, `web_attack`, `brute_force`, `flood`).
-3. Save back to `~/lab/ml/features.csv`.
+1. `python parse_logs.py --log ... --out ...` runs the parser. `--log` points it at your OPNsense log file. `--out` tells it where to write the resulting CSV.
+2. `wc -l ~/lab/ml/features.csv` counts the number of lines. Expect at least a few hundred rows if you have run scenarios. The first line is a header row.
+3. `head -n 5` shows the first 5 rows so you can confirm it looks correct.
 
-Expected: CSV keeps original columns and has labeled rows.
+Expected output from `head`:
+
+```text
+timestamp,src_ip,dst_ip,dst_port,proto,action,signature,severity,label
+2026-05-06T10:00:00+00:00,192.168.60.10,192.168.50.10,80,TCP,pass,...,low,unknown
+```
+
+If the file has 1 line (only the header) the log file was empty. Go back to the dashboard, launch a scenario, let it run, then re-run this step.
+
+### 10.3 Understand the label column and why it matters
+
+The `label` column is your human annotation. It tells the ML model which class of traffic each row belongs to. Without labels the classifier cannot learn to distinguish attack types — it can only detect anomalies (unusual events). With labels it learns the difference between `benign`, `scan`, `web_attack`, `brute_force`, and `flood` traffic.
+
+You know which attacks were running at which time because you launched them yourself from the dashboard. That timing knowledge is what you use to fill in the label column.
+
+**If you have never labeled data before:** think of it like marking exam papers. Each row is an event. You are writing in the answer — what kind of traffic this row came from — based on what you know you were doing at the time.
+
+Valid label values used by this pipeline:
+
+1. `benign` — normal background traffic, nothing was running.
+2. `scan` — a `tcp_syn_burst`, `fin_scan`, or `web_scan` scenario was active.
+3. `web_attack` — `sql_injection_sim`, `command_injection_probe`, or `credential_stuffing_http` was active.
+4. `brute_force` — `ssh_bruteforce_sim` was active.
+5. `flood` — `udp_flood` or `icmp_flood` was active.
+
+Rows from when nothing was running should be labeled `benign`. Rows generated during a specific scenario should be labeled with the class above. Rows you are unsure about leave as `unknown` — the training script skips `unknown` rows for the classifier but still uses them for anomaly detection.
+
+### 10.4 Label the CSV
+
+The most practical way to label is to use the `timestamp` column to match rows to the scenarios you ran.
+
+Option A — edit directly in the terminal with a quick sed pass per time window (useful if you ran one scenario at a time with clear start/stop times):
+
+```bash
+# Example: mark rows between 10:05 and 10:12 as web_attack
+# (adjust timestamps to match your actual run times)
+cd ~/lab/ml
+awk -F',' 'NR==1 {print; next}
+  $1 >= "2026-05-06T10:05" && $1 <= "2026-05-06T10:12" {$9="web_attack"; print $0; next}
+  {print}' OFS=',' features.csv > features_labeled.csv
+mv features_labeled.csv features.csv
+```
+
+Option B — copy the file to Windows and open it in Excel or LibreOffice Calc:
+
+```bash
+# On Windows terminal (PowerShell), copy the file to desktop:
+scp vbox@192.168.50.2:~/lab/ml/features.csv C:\Users\Bansi\Desktop\features.csv
+```
+
+Then open it, sort by `timestamp`, and manually type the label values in the last column. Save as CSV (not xlsx). Copy it back:
+
+```bash
+scp C:\Users\Bansi\Desktop\features.csv vbox@192.168.50.2:~/lab/ml/features.csv
+```
+
+Option C — if you want to skip labeling for now, leave all rows as `unknown`. The Isolation Forest anomaly detector will still train and work. Only the Random Forest classifier (which produces attack-type predictions) requires labels. You can label and re-train later.
+
+After labeling, verify the distribution:
+
+`[debian]`:
+
+```bash
+cd ~/lab/ml
+source .venv/bin/activate
+python -c "
+import pandas as pd
+df = pd.read_csv('features.csv')
+print(df['label'].value_counts())
+"
+```
+
+Expected: you should see your label classes printed with counts. If everything is still `unknown` and you intended to label, something went wrong with the CSV edit.
 
 ---
 
-## 11. Train Isolation Forest
+## 11. Train the Models
 
-### 11.1 Create and Run Training Script
+### 11.1 What train.py does — explained simply
+
+`train.py` reads `features.csv` and trains two separate models:
+
+#### Model 1: Isolation Forest (anomaly detector)
+
+This model does not care about your labels at all. It learns what "normal" looks like by studying all the rows together, then identifies events that look statistically unusual. Think of it like a security guard who has watched a building for weeks and flags anything that looks out of the ordinary — they do not need to know the name of each threat, they just know it does not look normal. The result is an `anomaly_flag` (1 = normal, -1 = anomaly) and an `anomaly_score` (a number, more negative means more anomalous) for every event.
+
+Output file: `isolation_forest.joblib` and `preprocessor.joblib`.
+
+#### Model 2: Random Forest Classifier (attack-type classifier)
+
+This model reads only the rows you labeled (anything not `unknown`) and learns the patterns that distinguish `benign` from `scan` from `web_attack` etc. It does need your labels. It splits your labeled data 80/20, trains on 80%, and tests on the remaining 20%, printing a classification report showing how accurately it learned each class. The more labeled rows you have and the more balanced the classes are, the better it performs.
+
+Output file: `random_forest_pipeline.joblib`.
+
+**If you have no labels yet:** `train.py` detects this and prints `Skipping Random Forest: no labeled data or only one class.` — this is fine. Only the Isolation Forest runs. You will still get anomaly detection working.
+
+### 11.2 Run Training
 
 `[debian]`:
 
@@ -823,18 +1045,68 @@ Expected: CSV keeps original columns and has labeled rows.
 cd ~/lab/ml
 source .venv/bin/activate
 python train.py
-ls -la ~/lab/ml/*.joblib ~/lab/ml/latest_results.json
 ```
 
-Expected: model files and `latest_results.json` are created.
+Training takes between 10 seconds and 2 minutes depending on how many rows are in `features.csv`. Watch the terminal output.
+
+If you provided labels you will see a classification report like this:
+
+```text
+              precision    recall  f1-score   support
+      benign       0.91      0.95      0.93        40
+       flood       0.88      0.82      0.85        17
+        scan       0.79      0.83      0.81        12
+  web_attack       0.85      0.80      0.82        10
+```
+
+Higher numbers are better. `precision` means "of the events the model said were class X, what fraction actually were?". `recall` means "of all the actual class X events, what fraction did the model catch?". Do not worry if early numbers are low — you have limited data. The model improves with more labeled examples.
+
+### 11.3 Verify Model Files Were Created
+
+`[debian]`:
+
+```bash
+ls -lh ~/lab/ml/*.joblib ~/lab/ml/latest_results.json
+```
+
+Expected: you should see at minimum:
+
+1. `preprocessor.joblib` — the data normalizer (always created).
+2. `isolation_forest.joblib` — the anomaly detector (always created).
+3. `latest_results.json` — summary stats the dashboard reads (always created).
+4. `random_forest_pipeline.joblib` — the classifier (only if you had labels).
+
+If any file is missing, re-run `python train.py` and read the error output carefully.
+
+### 11.4 Inspect latest_results.json
+
+`[debian]`:
+
+```bash
+cat ~/lab/ml/latest_results.json
+```
+
+This file is what the dashboard ML tab reads to populate the summary cards. It contains:
+
+1. `total_scored` — how many events were scored.
+2. `anomaly_pct` — what percentage of events were flagged as anomalies by the Isolation Forest.
+3. `top_class` — the most common label in your dataset.
+4. `distribution` — a count of each label class.
+5. `trend` — currently empty (populated in a future extension).
 
 ---
 
 ## 12. Run Inference and Write Predictions
 
-### 12.1 Create Inference Script
+### 12.1 What infer.py does
 
-This repo already ships `infer.py`. Run it directly.
+`infer.py` loads the saved model files from disk and runs them against `features.csv` again to produce a `predictions.json` file. This file is what the dashboard reads for the row-level predictions table in the ML tab. It shows the 50 most recent events with their anomaly score, anomaly flag, predicted attack class, and confidence score.
+
+You will re-run `infer.py` every time you collect new logs and want the dashboard to show fresh predictions. The workflow is: collect new logs → run `parse_logs.py` → run `infer.py` → dashboard refreshes automatically on next poll.
+
+You do not need to re-run `train.py` every time — only when you have significantly more labeled data and want to retrain the models from scratch.
+
+### 12.2 Run Inference
 
 `[debian]`:
 
@@ -844,27 +1116,75 @@ source .venv/bin/activate
 python infer.py
 ```
 
-### 12.2 Verify Predictions File
+Expected output: `Inference done. 50 predictions written.`
+
+If you see `FileNotFoundError: isolation_forest.joblib` it means training has not been run yet. Go back to section 11.2.
+
+### 12.3 Inspect the Predictions File
 
 `[debian]`:
 
 ```bash
-ls -la ~/lab/ml/predictions.json
-head -n 20 ~/lab/ml/predictions.json
+cat ~/lab/ml/predictions.json | python3 -m json.tool | head -n 40
 ```
 
-### 12.3 Verify ML Data Appears in Dashboard
+The `python3 -m json.tool` part pretty-prints the JSON so it is readable. You should see a list of objects, each looking like:
 
-1. Open dashboard ML tab.
-2. Confirm summary cards load.
-3. Confirm recent prediction rows appear.
-4. Confirm no API errors in browser dev tools.
+```json
+{
+  "timestamp": "2026-05-06T10:15:00+00:00",
+  "src_ip": "192.168.60.10",
+  "dst_ip": "192.168.50.10",
+  "dst_port": 80,
+  "anomaly_score": -0.0821,
+  "anomaly_flag": -1,
+  "predicted_class": "web_attack",
+  "confidence": 0.74
+}
+```
+
+What each field means:
+
+1. `anomaly_flag: -1` means the Isolation Forest considered this event anomalous. `1` means normal.
+2. `anomaly_score` — more negative = more anomalous. Values around 0.0 are borderline. Values below -0.1 are clearly anomalous in this dataset.
+3. `predicted_class` — what the Random Forest classifier thinks this traffic is. Will be `unknown` if you did not label training data.
+4. `confidence` — how sure the classifier is, between 0.0 and 1.0. Below 0.5 means low confidence.
+
+### 12.4 Verify ML Data Appears in Dashboard
+
+`[debian]` make sure the control API can reach the predictions file. The API serves ML data from `~/lab/ml/` by default:
+
+```bash
+set -a
+source ~/lab/secrets/api_token.env
+set +a
+
+curl http://127.0.0.1:5000/ml/summary -H "X-API-Token: $TOKEN" | python3 -m json.tool
+curl http://127.0.0.1:5000/ml/predictions?limit=5 -H "X-API-Token: $TOKEN" | python3 -m json.tool
+```
+
+Expected for `/ml/summary`: a JSON object with `total_scored`, `anomaly_pct`, `top_class`, `distribution`.
+
+Expected for `/ml/predictions`: a JSON list of prediction objects.
+
+If either returns `404` or an error about a missing file, the API cannot find `latest_results.json` or `predictions.json`. Check that `~/lab/ml/` contains both files and that the API process has read access to that path.
+
+Now open the dashboard in the browser, click the **ML Analytics** tab, and confirm:
+
+1. Summary cards show non-zero numbers.
+2. The anomaly trend chart has bars.
+3. The prediction distribution chart has segments.
+4. The predictions table shows rows with anomaly scores and predicted classes.
+
+If you see "No ML data" or blank cards, open browser developer tools (F12 → Network tab), reload the ML tab, and look for a failed request to `/ml/summary`. The error message in the response body will tell you what is wrong.
 
 ---
 
 ## 13. Day 3 Final Checks
 
 ### 13.1 Restart API with ML Data Ready
+
+If the API was already running from Day 2 it does not need to be restarted — the ML endpoints read the files at request time, not at startup. However if you changed `api.env` or want a clean state:
 
 `[debian]`:
 
@@ -880,9 +1200,17 @@ cd ~/lab/control-api
 source .venv/bin/activate
 nohup uvicorn app:app --host 0.0.0.0 --port 5000 > ~/lab/control-api/api.log 2>&1 &
 echo $! > ~/lab/control-api/api.pid
+sleep 1
+tail -n 20 ~/lab/control-api/api.log
 ```
 
-### 13.2 Run a Final Scenario and Watch Pipeline End-to-End
+Confirm the last line of the log says `Application startup complete.` with no errors below it.
+
+### 13.2 Run a Full End-to-End Scenario and Update Predictions
+
+This step exercises the entire pipeline from attack launch through to ML output in one pass.
+
+Step 1 — launch a scenario:
 
 `[debian]`:
 
@@ -897,11 +1225,43 @@ curl -X POST http://127.0.0.1:5000/launch \
   -d '{"scenario":"web_scan","target_ip":"192.168.50.10"}'
 ```
 
-Expected:
+Step 2 — wait for it to complete (watch the dashboard control tab or wait ~60 seconds).
 
-1. Run appears in dashboard control tab.
-2. Telemetry updates in near real time.
-3. ML tab continues to load predictions summary.
+Step 3 — re-parse the updated log:
+
+```bash
+cd ~/lab/ml
+source .venv/bin/activate
+python parse_logs.py --log ~/lab/logs/opnsense.log --out ~/lab/ml/features.csv
+```
+
+Step 4 — re-run inference with the new rows (no need to retrain):
+
+```bash
+python infer.py
+```
+
+Step 5 — reload the dashboard ML tab. The predictions table and anomaly score chart should now include the new events from the scenario you just ran.
+
+### 13.3 Common Problems and Fixes
+
+**`features.csv` has only 1 line (just the header):**
+The OPNsense log file is empty or was cleared. Launch scenarios from the dashboard first, wait for traffic to be generated, then run `parse_logs.py` again.
+
+**`train.py` fails with `features.csv is empty`:**
+Same root cause. The parser ran but found nothing. Check `wc -l ~/lab/logs/opnsense.log` — if it returns 0 the log is empty.
+
+**`infer.py` fails with `FileNotFoundError`:**
+Run `train.py` first. `infer.py` depends on the `.joblib` files that `train.py` creates.
+
+**Dashboard ML tab shows "unknown" for all predicted classes:**
+The Random Forest was not trained because all labels were `unknown`. Go back to section 10.3, label at least some rows, and re-run `train.py` followed by `infer.py`.
+
+**Classification report shows very low precision/recall (below 0.5):**
+Not enough labeled data, or classes are extremely imbalanced (e.g. 500 benign rows and 3 web_attack rows). Run more scenarios to collect more attack samples, label them, and retrain.
+
+**`anomaly_pct` in the dashboard shows 0% or 100%:**
+If 0%: the Isolation Forest's `contamination` parameter (set to 5% in `train.py`) is too low for your dataset — it expects anomalies to be rare. If your dataset is mostly attack traffic this will misfire. If 100%: the opposite — your dataset has almost no normal traffic. Run some benign sessions (no scenarios active) and include that data before retraining.
 
 ---
 

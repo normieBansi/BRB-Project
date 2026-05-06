@@ -46,12 +46,10 @@ Expected: `kali-lab` is listed and running.
 
 If missing, create and start it exactly:
 
+Do not change flags, network, IP, or mount path in this baseline command if your environment already depends on it.
+
 ```bash
-sudo podman run -d --name kali-lab --replace \
-  --cap-add=NET_RAW --cap-add=NET_ADMIN \
-  --security-opt seccomp=unconfined \
-  --network opt1 --ip 192.168.60.10 \
-  kalilinux/kali-rolling sleep infinity
+sudo podman run -d --name kali-lab --replace --cap-add=NET_RAW --cap-add=NET_ADMIN --security-opt seccomp=unconfined --network opt1 --ip 192.168.60.10 -v /opt/dev/kali-src:/app kali-lab:custom sleep infinity
 ```
 
 ### 1.2 Get a Shell into Kali

@@ -733,14 +733,35 @@ def kali_exec_command(script_name: str, run_id: str, target_ip: str) -> list[str
 
 
 def extract_timestamp(line: str) -> str:
-    syslog_match = re.match(r"^([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})", line)
-    if not syslog_match:
-        return utcnow_iso()
-    try:
-        parsed = datetime.strptime(f"{datetime.now().year} {syslog_match.group(1)}", "%Y %b %d %H:%M:%S")
-        return parsed.replace(tzinfo=timezone.utc).isoformat()
-    except ValueError:
-        return utcnow_iso()
+    # RFC3339 / RFC5424 style timestamps, commonly present in modern syslog payloads.
+    iso_match = re.search(
+        r"\b(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)\b",
+        line,
+    )
+    if iso_match:
+        candidate = iso_match.group(1).replace(" ", "T")
+        if candidate.endswith("Z"):
+            candidate = f"{candidate[:-1]}+00:00"
+        try:
+            parsed = datetime.fromisoformat(candidate)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc).isoformat()
+        except ValueError:
+            pass
+
+    # Legacy BSD syslog timestamp, e.g. "May  6 13:14:15".
+    syslog_match = re.search(r"\b([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\b", line)
+    if syslog_match:
+        try:
+            now_utc = datetime.now(timezone.utc)
+            parsed = datetime.strptime(f"{now_utc.year} {syslog_match.group(1)}", "%Y %b %d %H:%M:%S")
+            return parsed.replace(tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            pass
+
+    # Last-resort fallback for logs with missing/unknown timestamp format.
+    return utcnow_iso()
 
 
 def parse_event(line: str) -> dict[str, Any]:
@@ -815,13 +836,18 @@ def parse_event(line: str) -> dict[str, Any]:
         action = "pass"
 
     severity_text = f"{lower_line} {signature.lower()}"
+    priority_match = re.search(r"\bpriority\s*[:=]?\s*(\d+)\b", severity_text, flags=re.IGNORECASE)
+    severity_match = re.search(r"\bseverity\s*[:=]?\s*(\d+)\b", severity_text, flags=re.IGNORECASE)
+
+    priority_value = int(priority_match.group(1)) if priority_match else None
+    severity_value = int(severity_match.group(1)) if severity_match else None
+
     high_keywords = [
-        "priority:1",
-        "severity 1",
         "critical",
         "sql injection",
+        "sqli",
         "command injection",
-        "injection",
+        "cmd injection",
         "brute force",
         "credential stuffing",
         "rce",
@@ -832,21 +858,34 @@ def parse_event(line: str) -> dict[str, Any]:
         "xss",
         "malware",
         "trojan",
+        "web attack",
+        "injection attempt",
+        "nikto",
     ]
     medium_keywords = [
-        "priority:2",
-        "severity 2",
         "warning",
         "scan",
+        "portscan",
+        "syn scan",
+        "fin scan",
         "flood",
         "dos",
         "suspicious",
         "recon",
+        "probe",
     ]
 
-    if any(token in severity_text for token in high_keywords):
+    if priority_value == 1 or severity_value == 1:
+        severity = "high"
+    elif priority_value == 2 or severity_value == 2:
+        severity = "medium"
+    elif any(token in severity_text for token in high_keywords):
         severity = "high"
     elif any(token in severity_text for token in medium_keywords):
+        severity = "medium"
+    elif action == "block":
+        severity = "medium"
+    elif action == "alert":
         severity = "medium"
     else:
         severity = "low"
