@@ -40,8 +40,8 @@ The scope includes architecture, implementation, and evaluation of a sidecar mod
     \item stateful segmentation and policy enforcement with OPNsense,
     \item IDS/IPS detection through Suricata,
     \item log collection and visualization,
-    \item anomaly and classification pipeline using Isolation Forest and Random Forest,
-    \item controlled traffic generation for testing using scenario scripts and TRex.
+    \item anomaly analytics pipeline using Isolation Forest,
+    \item controlled traffic generation for testing using scenario scripts (TRex archived for later use).
 \end{enumerate}
 
 \subsection{Scope of Project Impact}
@@ -185,7 +185,7 @@ The project implements a sidecar-based adaptive firewall architecture.
     \item Firewall and IDS events are exported using syslog.
     \item Analytics node processes logs into features.
     \item Isolation Forest gives anomaly score trends.
-    \item Random Forest classifies known scenario classes.
+    \item protocol/action context from parsed logs explains anomalous events.
     \item Dashboard combines control-plane and data-plane visibility.
 \end{enumerate}
 
@@ -249,7 +249,7 @@ Analytics VM & Ubuntu with log + model stack \\
 IDS/IPS & Suricata integration \\
 Data stack & Syslog + SIEM/dashboard tooling \\
 Modeling & Python stack (pandas, scikit-learn, joblib) \\
-Traffic generation & TRex + scripted scenarios \\
+Traffic generation & scripted scenarios (+ optional archived TRex) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -276,14 +276,14 @@ Method follows build-measure-improve cycle for network defense engineering.
 \begin{enumerate}
     \item transform firewall/IDS events into flow-level statistical features,
     \item train Isolation Forest baseline on mostly normal traffic,
-    \item train Random Forest on labeled scenario dataset,
+    \item generate anomaly-only inference outputs,
     \item integrate outputs into dashboard stream.
 \end{enumerate}
 
 \subsection{Stage 4: Operational Validation}
 \begin{enumerate}
     \item run scenario-based tests,
-    \item execute TRex stress profiles,
+    \item execute optional TRex stress profiles only when re-enabled,
     \item compare visibility and detection quality across modes.
 \end{enumerate}
 
@@ -297,7 +297,7 @@ Method follows build-measure-improve cycle for network defense engineering.
     \item Suricata active on relevant interfaces,
     \item centralized telemetry and dashboard,
     \item model scoring pipeline attached to processed logs,
-    \item traffic from scripted tests and TRex profiles.
+    \item traffic from scripted tests and optional TRex profiles.
 \end{enumerate}
 
 \subsection{Experiment Categories}
@@ -320,7 +320,7 @@ Method follows build-measure-improve cycle for network defense engineering.
 \begin{enumerate}
     \item anomaly score distribution under normal traffic,
     \item anomaly spikes under suspicious traffic,
-    \item classification quality for labeled attack classes.
+    \item protocol/action context quality for anomalous events.
 \end{enumerate}
 
 \subsubsection{Load Tests}
@@ -340,8 +340,8 @@ Method follows build-measure-improve cycle for network defense engineering.
 \toprule
 Metric Group & Metrics \\
 \midrule
-Detection & event count, severity distribution, signature diversity \\
-Model & confusion matrix, precision, recall, macro F1, anomaly score spread \\
+Detection & event count, protocol mix, event-source mix, signature diversity \\
+Model & anomaly score spread, anomaly ratio, anomaly drift over time \\
 System & CPU, RAM, ingestion delay, packet drop \\
 Operations & run repeatability, scenario-to-alert correlation \\
 \bottomrule
@@ -359,7 +359,7 @@ This section is currently a working draft projection and will be updated with fi
     \item clear policy enforcement between segmented zones,
     \item improved visibility through unified telemetry,
     \item anomaly layer helps spot suspicious behavior beyond direct signatures,
-    \item supervised model helps classify known scenario types for faster triage.
+    \item protocol/action context helps triage anomalous events faster.
 \end{enumerate}
 
 \subsection{Reporting Template for Final Numbers}
@@ -372,11 +372,11 @@ Area & Metric & Value \\
 \midrule
 Signature detection & Total events & [ ] \\
 Signature detection & Distinct signatures & [ ] \\
-Signature detection & High/Critical share & [ ] \\
+Signature detection & Top protocol concentration & [ ] \\
 Anomaly model & Anomaly ratio & [ ] \\
 Anomaly model & Estimated false positives & [ ] \\
-Classification model & Accuracy & [ ] \\
-Classification model & Macro F1 & [ ] \\
+Context telemetry & Top event source share & [ ] \\
+Context telemetry & Anomaly-score threshold hit rate & [ ] \\
 Performance & Avg ingest delay & [ ] \\
 Performance & Peak analytics CPU & [ ] \\
 Performance & Packet drop at stress & [ ] \\
@@ -391,7 +391,7 @@ From the literature and current implementation trend, some observations are expe
 \begin{enumerate}
     \item signature-based engines stay strong for known threats,
     \item anomaly scoring can surface unknown or less-obvious activity,
-    \item classification quality is strongly tied to label quality,
+    \item anomaly quality is strongly tied to feature quality and baseline diversity,
     \item sidecar pattern keeps enforcement stable while analytics evolves.
 \end{enumerate}
 
@@ -422,7 +422,7 @@ From the literature and current implementation trend, some observations are expe
     \item configured OPNsense segmentation and firewall policy,
     \item Suricata-based IDS/IPS setup,
     \item centralized logging and dashboard views,
-    \item anomaly and classification model scripts/artifacts,
+    \item anomaly analytics scripts/artifacts,
     \item scenario and TRex traffic profiles,
     \item experiment logs and observations.
 \end{enumerate}

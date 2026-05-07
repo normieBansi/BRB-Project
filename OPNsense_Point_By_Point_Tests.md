@@ -218,19 +218,20 @@ sudo apt update
 sudo apt install -y apache2 curl
 sudo systemctl enable --now apache2
 curl http://127.0.0.1
+curl -I http://127.0.0.1/dvwa/login.php
 ```
 
 Expected:
 
 1. Apache is active.
-2. Local curl returns the default page.
+2. Local curl returns DVWA/login response.
 
 ### 5.2 Confirm Kali Can Reach the Web Target
 
 From Kali:
 
 ```bash
-curl -I http://192.168.50.10
+curl -I http://192.168.50.10/dvwa/login.php
 nc -zv 192.168.50.10 80
 ```
 
@@ -248,10 +249,10 @@ sudo apt update
 sudo apt install -y nmap nikto curl
 nmap -sS -Pn -p 1-1000 192.168.50.10
 nmap -sV -Pn 192.168.50.10
-nikto -h http://192.168.50.10
-curl "http://192.168.50.10/?id=1'"
-curl "http://192.168.50.10/../../../../etc/passwd"
-curl -A "sqlmap/1.0" "http://192.168.50.10/"
+nikto -h http://192.168.50.10/dvwa
+curl "http://192.168.50.10/dvwa/vulnerabilities/sqli/?id=1'&Submit=Submit"
+curl "http://192.168.50.10/dvwa/vulnerabilities/fi/?page=../../../../etc/passwd"
+curl -A "sqlmap/1.0" "http://192.168.50.10/dvwa/login.php"
 ```
 
 Expected:
@@ -295,10 +296,10 @@ These tests verify OPNsense REST alias integration with Debian API controls befo
 
 In OPNsense > Firewall > Aliases, confirm:
 
-1. `KALI_HOST` is Type `External (advanced)`. If it is Type `Host(s)`, delete it and recreate as `External (advanced)`.
-2. `AUTO_BAN_IPS` is Type `External (advanced)`. Same action if wrong type.
+1. `KALI_HOST` is Type `Host(s)`.
+2. `AUTO_BAN_IPS` is Type `Host(s)`.
 
-Why: The REST alias_util endpoints only manage entries in External/table-type aliases. A `Host(s)` alias type will accept the REST call but silently ignore the address change.
+Why: This lab now uses Host(s) aliases to avoid External/table alias state edge cases that can amplify default-deny/state-violation noise. The Control API uses alias add/delete and has a fallback sync strategy for KALI_HOST changes.
 
 ### 6.1 Run the One-Shot Debian Smoke Test First
 

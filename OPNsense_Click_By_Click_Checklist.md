@@ -114,8 +114,8 @@ If you already added your own rules/objects, do not delete them. Keep your custo
 - `[opnsense-ui]` Open **Firewall > Aliases**.
 - Create each alias exactly as listed:
 
-- `KALI_HOST`: Type `External (advanced)`, Content `192.168.60.10`
-- `AUTO_BAN_IPS`: Type `External (advanced)`, Content `192.168.60.254`
+- `KALI_HOST`: Type `Host(s)`, Content `192.168.60.10`
+- `AUTO_BAN_IPS`: Type `Host(s)`, Content `192.168.60.254`
 - `UBUNTU_HOST`: Type `Host(s)`, Content `192.168.50.10`
 - `LAB_NET_RED`: Type `Network(s)`, Content `192.168.60.0/24`
 - `LAB_NET_BLUE`: Type `Network(s)`, Content `192.168.50.0/24`
@@ -128,8 +128,9 @@ If you already added your own rules/objects, do not delete them. Keep your custo
 
 Critical checks:
 
-1. `KALI_HOST` and `AUTO_BAN_IPS` must be `External (advanced)`, not `Host(s)`.
+1. `KALI_HOST` and `AUTO_BAN_IPS` must be `Host(s)`, not `External (advanced)`.
 2. If wrong type was created, delete and recreate with correct type.
+3. Keep alias names unchanged (`KALI_HOST`, `AUTO_BAN_IPS`) so Control API sync and ban/unban hooks continue to work.
 
 Expected: alias list contains exactly the 11 entries above with correct types.
 
@@ -337,7 +338,7 @@ Expected: firewall reachability and resolver response succeed.
 
 1. `[opnsense-ui]` Open **Services > Intrusion Detection > Administration**.
 2. Enable IDS.
-3. Select interfaces `LAN` and `OPT1`.
+3. Select interface `LAN` only.
 4. Save and Apply.
 
 ### 8.2 Download Rules
@@ -353,8 +354,10 @@ Expected: ET Open rules download without error.
 1. Back in **Administration**, set HOME_NET to:
 
 ```text
-192.168.50.0/24,192.168.60.0/24
+192.168.50.0/24,
 ```
+
+- do not include `192.168.60.0/24` in **HOME_NET**, as it would not trigger rules for external threats
 
 1. Save and Apply.
 
@@ -367,25 +370,25 @@ Expected: ET Open rules download without error.
 ### 8.5 Start in IDS Mode
 
 1. Confirm IDS mode is active (alerts only).
-2. Keep IPS disabled until section 9.5.
+2. Keep IPS disabled for baseline lab stability (virtualized netmap issues are common).
 
 ---
 
 ## 9. Suricata Validation
 
-### 9.1 Prepare Ubuntu Web Target
+### 9.1 Prepare Ubuntu DVWA Target
 
-1. `[ubuntu]` Ensure Apache is running:
+1. `[ubuntu]` Ensure Apache + DVWA are running:
 
 ```bash
 sudo systemctl enable --now apache2
-curl -I http://127.0.0.1
+curl -I http://127.0.0.1/dvwa/login.php
 ```
 
 ### 9.2 Confirm Reachability from Kali
 
 ```bash
-curl -I http://192.168.50.10
+curl -I http://192.168.50.10/dvwa/login.php
 nc -zv 192.168.50.10 80
 ```
 
@@ -394,10 +397,10 @@ nc -zv 192.168.50.10 80
 ```bash
 nmap -sS -Pn -p 1-1000 192.168.50.10
 nmap -sV -Pn 192.168.50.10
-nikto -h http://192.168.50.10
-curl "http://192.168.50.10/?id=1'"
-curl "http://192.168.50.10/../../../../etc/passwd"
-curl -A "sqlmap/1.0" "http://192.168.50.10/"
+nikto -h http://192.168.50.10/dvwa
+curl "http://192.168.50.10/dvwa/vulnerabilities/sqli/?id=1'&Submit=Submit"
+curl "http://192.168.50.10/dvwa/vulnerabilities/fi/?page=../../../../etc/passwd"
+curl -A "sqlmap/1.0" "http://192.168.50.10/dvwa/login.php"
 ```
 
 ### 9.4 Check Alerts
@@ -408,9 +411,9 @@ curl -A "sqlmap/1.0" "http://192.168.50.10/"
 
 Expected: you see events referencing Kali source and Ubuntu destination.
 
-### 9.5 Enable IPS Only After IDS Works
+### 9.5 Optional IPS Stage (Only If Stable)
 
-1. Enable IPS/inline mode.
+1. Enable IPS/inline mode only if your VM remains stable.
 2. Re-run one short scan and one nikto run.
 3. Confirm alerts now include drop/reject where expected.
 
@@ -652,9 +655,9 @@ Expose only dashboard/API path when needed. Do not expose raw logging, indexer, 
 
 ---
 
-## Day 3 - OPNsense Final Validation, IPS Staging, and Evidence Capture
+## Day 3 - OPNsense Final Validation, Optional IPS Staging, and Evidence Capture
 
-## 15. Day 3 IPS and Final Hardening Steps
+## 15. Day 3 IDS Finalization and Optional IPS Hardening
 
 ### 15.1 Reconfirm Resource-Safe Settings
 
@@ -664,7 +667,7 @@ Expose only dashboard/API path when needed. Do not expose raw logging, indexer, 
 
 ### 15.2 Move from IDS to IPS Carefully
 
-1. Enable IPS.
+1. Keep IDS as default. Enable IPS only if no netmap/iflib instability appears.
 2. Re-run one short scan/probe sequence.
 3. Confirm detection without breaking core allowed flows.
 
@@ -716,11 +719,11 @@ Capture and archive:
 
 Consider OPNsense complete only when all are true:
 
-1. Aliases are created with correct types, including external aliases for `KALI_HOST` and `AUTO_BAN_IPS`.
+1. Aliases are created with correct types, including Host(s) aliases for `KALI_HOST` and `AUTO_BAN_IPS`.
 2. OPT1 and LAN rule order matches this checklist.
 3. Kali reaches only intended Ubuntu services.
 4. External DNS bypass from clients is blocked.
-5. Suricata alerts fire in IDS and optionally IPS mode.
+5. Suricata alerts fire in IDS mode on LAN; IPS is optional.
 6. OPNsense forwards logs to Debian and Debian receives them.
 7. REST alias updates succeed with generated API credentials.
 8. Control API hook test can ban and unban without manual pf edits.
@@ -735,7 +738,7 @@ Use this exact triage order:
 
 1. Confirm topology/IP/gateway first.
 2. Confirm alias types and rule order second.
-3. Confirm service-level function (Apache, Unbound, Suricata) third.
+3. Confirm service-level function (DVWA/Apache, Unbound, Suricata) third.
 4. Confirm logging path fourth.
 5. Confirm REST credentials and alias util endpoints last.
 

@@ -117,11 +117,7 @@ Expected: Python 3.10+ is available.
 
 ## 3. Start Apache and Deploy DVWA (Attack Target Service)
 
-DVWA (Damn Vulnerable Web Application) replaces the plain Apache2 default page as the attack target. It
-provides realistic web-application endpoints (SQLi, command injection, brute force, XSS, file inclusion)
-that the Kali scenario scripts exploit. Apache2 is still the web server; DVWA runs on top of it.
-
-### 3.1 Start Apache and MariaDB
+### 3.1 Start and Enable Apache + MariaDB
 
 `[ubuntu]`:
 
@@ -132,19 +128,9 @@ service apache2 status --no-pager || true
 service mariadb status --no-pager || true
 ```
 
-Expected: both services show **active (running)**.
+Expected: both services are active.
 
-### 3.2 Verify Apache Responds Locally
-
-`[ubuntu]`:
-
-```bash
-curl -I http://127.0.0.1
-```
-
-Expected: HTTP status header returned.
-
-### 3.3 Create DVWA Database and User
+### 3.2 Create DVWA Database and User
 
 `[ubuntu]`:
 
@@ -157,78 +143,54 @@ FLUSH PRIVILEGES;
 SQL
 ```
 
-Expected: no MySQL errors.
-
-### 3.4 Clone and Configure DVWA
+### 3.3 Clone and Configure DVWA
 
 `[ubuntu]`:
 
 ```bash
-git clone https://github.com/digininja/DVWA.git /var/www/html/dvwa
-```
+if [ ! -d /var/www/html/dvwa ]; then
+  git clone https://github.com/digininja/DVWA.git /var/www/html/dvwa
+fi
 
-Write the DVWA config file:
-
-```bash
-cat > /var/www/html/dvwa/config/config.inc.php << 'EOF'
-<?php
-$_DVWA = array();
-$_DVWA[ 'db_server' ]   = '127.0.0.1';
-$_DVWA[ 'db_database' ] = 'dvwa';
-$_DVWA[ 'db_user' ]     = 'dvwa';
-$_DVWA[ 'db_password' ] = 'p@ssw0rd';
-$_DVWA[ 'db_port']      = '3306';
-$_DVWA[ 'default_security_level' ] = 'low';
-$_DVWA[ 'security_level' ]         = 'low';
-$_DVWA[ 'recaptcha_public_key' ]   = '';
-$_DVWA[ 'recaptcha_private_key' ]  = '';
-$_DVWA[ 'default_phpids_level' ]   = 'disabled';
-$_DVWA[ 'default_phpids_verbose' ] = 'false';
-?>
-EOF
-```
-
-### 3.5 Set File Permissions
-
-`[ubuntu]`:
-
-```bash
+cp /var/www/html/dvwa/config/config.inc.php.dist /var/www/html/dvwa/config/config.inc.php
+sed -i "s/'db_database' ] = 'dvwa'/'db_database' ] = 'dvwa'/" /var/www/html/dvwa/config/config.inc.php
+sed -i "s/'db_user' ] = 'root'/'db_user' ] = 'dvwa'/" /var/www/html/dvwa/config/config.inc.php
+sed -i "s/'db_password' ] = ''/'db_password' ] = 'p@ssw0rd'/" /var/www/html/dvwa/config/config.inc.php
 chown -R www-data:www-data /var/www/html/dvwa
 chmod -R 755 /var/www/html/dvwa
-chmod -R 777 /var/www/html/dvwa/hackable/uploads
-chmod -R 777 /var/www/html/dvwa/config
+chmod -R 777 /var/www/html/dvwa/hackable/uploads /var/www/html/dvwa/config
 service apache2 restart
 ```
 
-Expected: no errors; Apache restarts.
+### 3.4 Initialize DVWA Database (Browser Step)
 
-### 3.6 Initialize DVWA Database (Browser Step)
-
-From your **Windows host** browser:
+From host browser:
 
 1. Open `http://192.168.50.10/dvwa/setup.php`
-2. Scroll to the bottom and click **Create / Reset Database**.
-3. DVWA redirects to the login page automatically.
+2. Click **Create / Reset Database**
 
-Expected: green status rows for all PHP extensions; no red errors.
+Expected: setup completes and login page is reachable.
 
-> **Troubleshooting:**
-> - `php-xml not loaded` → run `apt install -y php-xml` then `service apache2 restart`
-> - `Could not connect to database` → confirm MariaDB is running: `service mariadb status`
-> - `404 on /dvwa/` → confirm the clone landed at `/var/www/html/dvwa/index.php`
+### 3.5 Verify DVWA Responds Locally
 
-### 3.7 Verify DVWA from Kali
+`[ubuntu]`:
+
+```bash
+curl -I http://127.0.0.1/dvwa/login.php
+```
+
+Expected: HTTP status header is returned.
+
+### 3.6 Verify DVWA Responds from Kali
 
 `[kali]`:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://192.168.50.10/dvwa/login.php
+curl -I http://192.168.50.10/dvwa/login.php
 nc -zv 192.168.50.10 80
 ```
 
-Expected: HTTP `200` and TCP/80 open.
-
-Default DVWA credentials: **admin / password** (security level: **Low**).
+Expected: HTTP response and open TCP/80 check.
 
 ---
 
@@ -310,7 +272,7 @@ Expected: recent firewall/suricata entries are present.
 Day 1 is complete only if all are true:
 
 1. Ubuntu container networking is correct.
-2. DVWA is accessible from Kali at `http://192.168.50.10/dvwa/login.php`.
+2. DVWA login is reachable from Kali at `http://192.168.50.10/dvwa/login.php`.
 3. rsyslog listeners are active.
 4. OPNsense logs are present in `/var/log/opnsense.log`.
 
@@ -637,12 +599,12 @@ Create control API runtime env file:
 cat > ~/lab/control-api/api.env << 'EOF'
 KALI_CONTAINER='kali-lab'
 TARGET_DEFAULT='192.168.50.10'
-TARGET_PROFILE='ubuntu-apache2'
+TARGET_PROFILE='ubuntu-dvwa'
 MAX_CONCURRENT_RUNS='3'
 OPNSENSE_LOG_PATH="$HOME/lab/logs/opnsense.log"
 TELEMETRY_EXCLUDED_IPS='192.168.50.1,192.168.50.2,192.168.60.1,192.168.60.2'
 DASHBOARD_ACTION_LOG_PATH="$HOME/lab/control-api/state/dashboard_actions.log"
-CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1,http://10.114.175.3:5000'
+CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1,http://10.114.175.3:5000,https://your-dashboard-domain.example'
 OPNSENSE_BAN_ALIAS_TABLE='AUTO_BAN_IPS'
 OPNSENSE_KALI_ALIAS_TABLE='KALI_HOST'
 OPNSENSE_API_TIMEOUT_SECONDS='4'
@@ -716,7 +678,7 @@ Expected fields:
 
 1. `firewall_integration_mode` is `opnsense-rest`.
 2. `opnsense_api_enabled` is `true`.
-3. `default_target_profile` is `ubuntu-apache2`.
+3. `default_target_profile` is `ubuntu-dvwa`.
 4. `dashboard_action_log_path` is present.
 5. `telemetry_excluded_ips` includes infra IP list.
 
@@ -908,16 +870,32 @@ Expected output: `ml_deps_ok` on a single line. If you see an `ImportError`, the
 
 ### 10.1 What does parse_logs.py do?
 
-`parse_logs.py` reads every line of `/home/vbox/lab/logs/opnsense.log` and converts each line into a row of structured data. For each log line it extracts:
+`parse_logs.py` reads every line of `/home/vbox/lab/logs/opnsense.log` and converts each matching line into a row of structured data.
 
-1. `src_ip` — the source IP address.
-2. `dst_ip` — the destination IP address.
-3. `dst_port` — the destination port number.
-4. `proto` — TCP, UDP, or ICMP.
-5. `action` — whether the packet was blocked, alerted on, or passed.
-6. `signature` — the Suricata rule message if one fired, otherwise the raw line.
-7. `severity` — low, medium, or high, parsed from the log line keywords.
-8. `label` — set to `unknown` by the script. You will fill this in manually in the next step.
+Default behavior (recommended for this project):
+
+1. Parse only `filterlog` lines for ML.
+2. Keep only lab-related traffic (events where source or destination starts with `192.168.`).
+
+Optional behavior:
+
+1. Add `--include-suricata` to include Suricata alert lines in ML features.
+2. Add `--all-events` to disable lab-subnet filtering.
+
+For each parsed event it writes these fields:
+
+1. `timestamp` — normalized UTC timestamp for the event.
+2. `event_source` — `filterlog` or `suricata`.
+3. `src_ip` — the source IP address.
+4. `dst_ip` — the destination IP address.
+5. `dst_port` — the destination port number.
+6. `proto` — TCP, UDP, or ICMP.
+7. `action` — normalized to pass, block, or alert.
+8. `signature` — filter rule label or normalized event signature text.
+9. `priority` — Suricata priority when present, otherwise `0`.
+10. `rule_label` — filter rule label/SID when present.
+11. `direction` — packet direction when available (`in`/`out`), else `unknown`.
+12. `label` — set to `unknown` by the script. It is kept for future experiments, but current anomaly-only mode does not require manual labeling.
 
 All of these rows get written to a CSV file called `features.csv`. A CSV is a spreadsheet-style text file where each row is one log event and each column is one field. This is the format that the ML training script reads.
 
@@ -931,57 +909,50 @@ You need to have collected logs first. Make sure you have run at least a few att
 cd ~/lab/ml
 source .venv/bin/activate
 python parse_logs.py --log ~/lab/logs/opnsense.log --out ~/lab/ml/features.csv
+# Optional: include Suricata alerts in ML features
+# python parse_logs.py --log ~/lab/logs/opnsense.log --out ~/lab/ml/features.csv --include-suricata
 wc -l ~/lab/ml/features.csv
 head -n 5 ~/lab/ml/features.csv
 ```
 
 What each command does:
 
-1. `python parse_logs.py --log ... --out ...` runs the parser. `--log` points it at your OPNsense log file. `--out` tells it where to write the resulting CSV.
+1. `python parse_logs.py --log ... --out ...` runs the parser. `--log` points it at your OPNsense log file. `--out` tells it where to write the resulting CSV. By default this parses filterlog-only entries; add `--include-suricata` only when you explicitly want Suricata alerts mixed into ML features.
 2. `wc -l ~/lab/ml/features.csv` counts the number of lines. Expect at least a few hundred rows if you have run scenarios. The first line is a header row.
 3. `head -n 5` shows the first 5 rows so you can confirm it looks correct.
 
 Expected output from `head`:
 
 ```text
-timestamp,src_ip,dst_ip,dst_port,proto,action,signature,severity,label
-2026-05-06T10:00:00+00:00,192.168.60.10,192.168.50.10,80,TCP,pass,...,low,unknown
+timestamp,event_source,src_ip,dst_ip,dst_port,proto,action,signature,priority,rule_label,direction,label
+2026-05-06T10:00:00+00:00,filterlog,192.168.60.10,192.168.50.10,80,TCP,pass,filterlog:pass:TCP,0,1000000103,in,unknown
 ```
 
 If the file has 1 line (only the header) the log file was empty. Go back to the dashboard, launch a scenario, let it run, then re-run this step.
 
-### 10.3 Understand the label column and why it matters
+### 10.3 Label column status (optional)
 
-The `label` column is your human annotation. It tells the ML model which class of traffic each row belongs to. Without labels the classifier cannot learn to distinguish attack types — it can only detect anomalies (unusual events). With labels it learns the difference between `benign`, `scan`, `web_attack`, `brute_force`, and `flood` traffic.
+The project now runs in anomaly-only mode (Isolation Forest). This means the `label` column is optional and can stay as `unknown` for all rows.
 
-You know which attacks were running at which time because you launched them yourself from the dashboard. That timing knowledge is what you use to fill in the label column.
+You can still keep labels for future supervised experiments, but they are not required for current training and inference.
 
-**If you have never labeled data before:** think of it like marking exam papers. Each row is an event. You are writing in the answer — what kind of traffic this row came from — based on what you know you were doing at the time.
-
-Valid label values used by this pipeline:
-
-1. `benign` — normal background traffic, nothing was running.
-2. `scan` — a `tcp_syn_burst`, `fin_scan`, or `web_scan` scenario was active.
-3. `web_attack` — `sql_injection_sim`, `command_injection_probe`, or `credential_stuffing_http` was active.
-4. `brute_force` — `ssh_bruteforce_sim` was active.
-5. `flood` — `udp_flood` or `icmp_flood` was active.
-
-Rows from when nothing was running should be labeled `benign`. Rows generated during a specific scenario should be labeled with the class above. Rows you are unsure about leave as `unknown` — the training script skips `unknown` rows for the classifier but still uses them for anomaly detection.
-
-### 10.4 Label the CSV
+### 10.4 Optional manual labeling (archived path)
 
 The most practical way to label is to use the `timestamp` column to match rows to the scenarios you ran.
 
-Option A — edit directly in the terminal with a quick sed pass per time window (useful if you ran one scenario at a time with clear start/stop times):
+Option A — edit directly in the terminal with a quick Python pass per time window (useful if you ran one scenario at a time with clear start/stop times):
 
 ```bash
-# Example: mark rows between 10:05 and 10:12 as web_attack
-# (adjust timestamps to match your actual run times)
 cd ~/lab/ml
-awk -F',' 'NR==1 {print; next}
-  $1 >= "2026-05-06T10:05" && $1 <= "2026-05-06T10:12" {$9="web_attack"; print $0; next}
-  {print}' OFS=',' features.csv > features_labeled.csv
-mv features_labeled.csv features.csv
+python - <<'PY'
+import pandas as pd
+
+df = pd.read_csv('features.csv')
+mask = (df['timestamp'] >= '2026-05-06T10:05') & (df['timestamp'] <= '2026-05-06T10:12')
+df.loc[mask, 'label'] = 'web_attack'
+df.to_csv('features.csv', index=False)
+print(f"Updated {int(mask.sum())} rows")
+PY
 ```
 
 Option B — copy the file to Windows and open it in Excel or LibreOffice Calc:
@@ -997,7 +968,7 @@ Then open it, sort by `timestamp`, and manually type the label values in the las
 scp C:\Users\Bansi\Desktop\features.csv vbox@192.168.50.2:~/lab/ml/features.csv
 ```
 
-Option C — if you want to skip labeling for now, leave all rows as `unknown`. The Isolation Forest anomaly detector will still train and work. Only the Random Forest classifier (which produces attack-type predictions) requires labels. You can label and re-train later.
+Option C — leave all rows as `unknown`. This is the default for anomaly-only mode.
 
 After labeling, verify the distribution:
 
@@ -1021,21 +992,18 @@ Expected: you should see your label classes printed with counts. If everything i
 
 ### 11.1 What train.py does — explained simply
 
-`train.py` reads `features.csv` and trains two separate models:
+`train.py` reads `features.csv` and trains an Isolation Forest anomaly detector plus the preprocessing pipeline.
 
-#### Model 1: Isolation Forest (anomaly detector)
+This mode does not need manual labels. It learns statistical baseline behavior from the full dataset and assigns:
 
-This model does not care about your labels at all. It learns what "normal" looks like by studying all the rows together, then identifies events that look statistically unusual. Think of it like a security guard who has watched a building for weeks and flags anything that looks out of the ordinary — they do not need to know the name of each threat, they just know it does not look normal. The result is an `anomaly_flag` (1 = normal, -1 = anomaly) and an `anomaly_score` (a number, more negative means more anomalous) for every event.
+1. `anomaly_flag` (`1` = normal, `-1` = anomalous)
+2. `anomaly_score` (more negative = more anomalous)
 
-Output file: `isolation_forest.joblib` and `preprocessor.joblib`.
+Output files:
 
-#### Model 2: Random Forest Classifier (attack-type classifier)
-
-This model reads only the rows you labeled (anything not `unknown`) and learns the patterns that distinguish `benign` from `scan` from `web_attack` etc. It does need your labels. It splits your labeled data 80/20, trains on 80%, and tests on the remaining 20%, printing a classification report showing how accurately it learned each class. The more labeled rows you have and the more balanced the classes are, the better it performs.
-
-Output file: `random_forest_pipeline.joblib`.
-
-**If you have no labels yet:** `train.py` detects this and prints `Skipping Random Forest: no labeled data or only one class.` — this is fine. Only the Isolation Forest runs. You will still get anomaly detection working.
+1. `preprocessor.joblib`
+2. `isolation_forest.joblib`
+3. `latest_results.json`
 
 ### 11.2 Run Training
 
@@ -1048,18 +1016,7 @@ python train.py
 ```
 
 Training takes between 10 seconds and 2 minutes depending on how many rows are in `features.csv`. Watch the terminal output.
-
-If you provided labels you will see a classification report like this:
-
-```text
-              precision    recall  f1-score   support
-      benign       0.91      0.95      0.93        40
-       flood       0.88      0.82      0.85        17
-        scan       0.79      0.83      0.81        12
-  web_attack       0.85      0.80      0.82        10
-```
-
-Higher numbers are better. `precision` means "of the events the model said were class X, what fraction actually were?". `recall` means "of all the actual class X events, what fraction did the model catch?". Do not worry if early numbers are low — you have limited data. The model improves with more labeled examples.
+There is no classifier report in anomaly-only mode.
 
 ### 11.3 Verify Model Files Were Created
 
@@ -1074,7 +1031,6 @@ Expected: you should see at minimum:
 1. `preprocessor.joblib` — the data normalizer (always created).
 2. `isolation_forest.joblib` — the anomaly detector (always created).
 3. `latest_results.json` — summary stats the dashboard reads (always created).
-4. `random_forest_pipeline.joblib` — the classifier (only if you had labels).
 
 If any file is missing, re-run `python train.py` and read the error output carefully.
 
@@ -1090,8 +1046,8 @@ This file is what the dashboard ML tab reads to populate the summary cards. It c
 
 1. `total_scored` — how many events were scored.
 2. `anomaly_pct` — what percentage of events were flagged as anomalies by the Isolation Forest.
-3. `top_class` — the most common label in your dataset.
-4. `distribution` — a count of each label class.
+3. `top_class` — set to `anomaly_only` in this mode.
+4. `distribution` — currently protocol distribution from parsed features.
 5. `trend` — currently empty (populated in a future extension).
 
 ---
@@ -1100,11 +1056,11 @@ This file is what the dashboard ML tab reads to populate the summary cards. It c
 
 ### 12.1 What infer.py does
 
-`infer.py` loads the saved model files from disk and runs them against `features.csv` again to produce a `predictions.json` file. This file is what the dashboard reads for the row-level predictions table in the ML tab. It shows the 50 most recent events with their anomaly score, anomaly flag, predicted attack class, and confidence score.
+`infer.py` loads the saved model files from disk and runs them against `features.csv` again to produce a `predictions.json` file. This file is what the dashboard reads for the row-level predictions table in the ML tab. It shows the 50 most recent events with anomaly score/flag plus protocol and action context.
 
 You will re-run `infer.py` every time you collect new logs and want the dashboard to show fresh predictions. The workflow is: collect new logs → run `parse_logs.py` → run `infer.py` → dashboard refreshes automatically on next poll.
 
-You do not need to re-run `train.py` every time — only when you have significantly more labeled data and want to retrain the models from scratch.
+You do not need to re-run `train.py` every time — only when you have significantly newer telemetry and want to rebuild the anomaly baseline.
 
 ### 12.2 Run Inference
 
@@ -1136,10 +1092,11 @@ The `python3 -m json.tool` part pretty-prints the JSON so it is readable. You sh
   "src_ip": "192.168.60.10",
   "dst_ip": "192.168.50.10",
   "dst_port": 80,
-  "anomaly_score": -0.0821,
-  "anomaly_flag": -1,
-  "predicted_class": "web_attack",
-  "confidence": 0.74
+  "proto": "TCP",
+  "action": "block",
+  "signature": "filterlog:block:TCP",
+  "anomaly_score": -0.0714,
+  "anomaly_flag": -1
 }
 ```
 
@@ -1147,8 +1104,8 @@ What each field means:
 
 1. `anomaly_flag: -1` means the Isolation Forest considered this event anomalous. `1` means normal.
 2. `anomaly_score` — more negative = more anomalous. Values around 0.0 are borderline. Values below -0.1 are clearly anomalous in this dataset.
-3. `predicted_class` — what the Random Forest classifier thinks this traffic is. Will be `unknown` if you did not label training data.
-4. `confidence` — how sure the classifier is, between 0.0 and 1.0. Below 0.5 means low confidence.
+3. `proto` and `action` — useful operational context to explain what type of packet was anomalous.
+4. `signature` — parser signature context (for filterlog this is usually `filterlog:<action>:<proto>`; for Suricata-enabled parsing this may be alert message text).
 
 ### 12.4 Verify ML Data Appears in Dashboard
 
@@ -1174,7 +1131,7 @@ Now open the dashboard in the browser, click the **ML Analytics** tab, and confi
 1. Summary cards show non-zero numbers.
 2. The anomaly trend chart has bars.
 3. The prediction distribution chart has segments.
-4. The predictions table shows rows with anomaly scores and predicted classes.
+4. The predictions table shows rows with anomaly scores plus protocol/action details.
 
 If you see "No ML data" or blank cards, open browser developer tools (F12 → Network tab), reload the ML tab, and look for a failed request to `/ml/summary`. The error message in the response body will tell you what is wrong.
 
@@ -1254,11 +1211,8 @@ Same root cause. The parser ran but found nothing. Check `wc -l ~/lab/logs/opnse
 **`infer.py` fails with `FileNotFoundError`:**
 Run `train.py` first. `infer.py` depends on the `.joblib` files that `train.py` creates.
 
-**Dashboard ML tab shows "unknown" for all predicted classes:**
-The Random Forest was not trained because all labels were `unknown`. Go back to section 10.3, label at least some rows, and re-run `train.py` followed by `infer.py`.
-
-**Classification report shows very low precision/recall (below 0.5):**
-Not enough labeled data, or classes are extremely imbalanced (e.g. 500 benign rows and 3 web_attack rows). Run more scenarios to collect more attack samples, label them, and retrain.
+**Dashboard ML tab shows empty protocol distribution:**
+Your parsed dataset likely has missing or malformed `proto` values. Re-run `parse_logs.py` and inspect the first rows of `features.csv` to confirm `proto` is populated.
 
 **`anomaly_pct` in the dashboard shows 0% or 100%:**
 If 0%: the Isolation Forest's `contamination` parameter (set to 5% in `train.py`) is too low for your dataset — it expects anomalies to be rare. If your dataset is mostly attack traffic this will misfire. If 100%: the opposite — your dataset has almost no normal traffic. Run some benign sessions (no scenarios active) and include that data before retraining.

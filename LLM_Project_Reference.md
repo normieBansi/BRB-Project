@@ -381,7 +381,7 @@ Firewall implication:
 Files:
 
 - `parse_logs.py`: converts raw logs into `features.csv`.
-- `train.py`: trains preprocessor + IsolationForest + optional RandomForest.
+- `train.py`: trains preprocessor + IsolationForest (anomaly-only mode).
 - `infer.py`: generates `predictions.json` for dashboard.
 
 Output artifacts typically used by backend endpoints:
@@ -399,8 +399,8 @@ Known caveat:
 
 Project docs currently rely on aliases such as:
 
-- `KALI_HOST` (external advanced)
-- `AUTO_BAN_IPS` (external advanced)
+- `KALI_HOST` (Host(s))
+- `AUTO_BAN_IPS` (Host(s))
 - `UBUNTU_HOST`
 - `ICMP_ALLOWED_TARGETS`
 - `TEST_TARGET_PORTS` (includes 53)
@@ -703,7 +703,7 @@ Kali execution vars:
 - `KALI_CONTAINER` (default `kali-lab`)
 - `KALI_SCENARIOS_DIR` (default `/opt/lab/scenarios`)
 - `TARGET_DEFAULT` (default `192.168.50.10`)
-- `TARGET_PROFILE` (default `ubuntu-apache2`)
+- `TARGET_PROFILE` (default `ubuntu-dvwa`)
 - `SSH_USER` (default `root`)
 - `MAX_CONCURRENT_RUNS` (default `3`)
 - `KALI_ALLOWED_SUBNET` (default `192.168.60.0/24`)
@@ -862,8 +862,8 @@ Control tab:
 
 Telemetry tab:
 - Summary cards.
-- Alerts timeline.
-- Severity distribution.
+- Events timeline.
+- Packet/protocol distribution.
 - Top sources and destination ports.
 - Blue team containment controls (ban/unban).
 - Recent events table.
@@ -871,7 +871,7 @@ Telemetry tab:
 ML tab:
 - Summary cards.
 - Anomaly trend chart.
-- Predicted class distribution.
+- Observed protocol distribution (parsed features).
 - Recent prediction table.
 
 ### 7.5 Frontend state and behavior details
@@ -954,21 +954,25 @@ Implication for firewall policy:
 - `train.py` -> trains models and writes:
   - `preprocessor.joblib`
   - `isolation_forest.joblib`
-  - optional `random_forest_pipeline.joblib`
   - `latest_results.json`
 - `infer.py` -> reads features/models and writes `predictions.json`.
+
+Current parser defaults:
+- Parses `filterlog` lines by default for ML.
+- Includes Suricata lines only when `--include-suricata` is provided.
+- Keeps lab-related (`192.168.*`) traffic by default unless `--all-events` is provided.
 
 ### 9.2 Current modeling approach
 
 - Anomaly: IsolationForest.
-- Classification: RandomForest (only if labeled data has >1 class and not all unknown).
+- Classification: none (anomaly-only mode).
 - Feature engineering:
-  - categorical: source/destination IP, proto, action, signature
-  - numeric: destination port, mapped severity
+  - categorical: event_source, source/destination IP, proto, action, signature, rule_label, direction
+  - numeric: destination port, priority
 
 ### 9.3 Important caveat
 
-ML scripts currently stamp `timestamp` with current time rather than preserving log event time. This is acceptable for basic demo output but weak for true temporal analytics.
+Inference preserves parsed row timestamps when available; if missing, current UTC time is used as fallback.
 
 ## 10. OPNsense Integration Requirements
 

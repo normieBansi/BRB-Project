@@ -79,7 +79,7 @@ DASHBOARD_ACTION_LOG_PATH = Path(
 KALI_CONTAINER = os.environ.get("KALI_CONTAINER", "kali-lab")
 KALI_SCENARIOS_DIR = os.environ.get("KALI_SCENARIOS_DIR", "/opt/lab/scenarios")
 TARGET_DEFAULT = os.environ.get("TARGET_DEFAULT", "192.168.50.10")
-TARGET_PROFILE = os.environ.get("TARGET_PROFILE", "ubuntu-apache2")
+TARGET_PROFILE = os.environ.get("TARGET_PROFILE", "ubuntu-dvwa")
 SSH_USER = os.environ.get("SSH_USER", "root")
 MAX_CONCURRENT_RUNS = max(1, int(os.environ.get("MAX_CONCURRENT_RUNS", "3")))
 KALI_ALLOWED_SUBNET = ipaddress.ip_network(os.environ.get("KALI_ALLOWED_SUBNET", "192.168.60.0/24"), strict=False)
@@ -101,6 +101,8 @@ OPNSENSE_API_TIMEOUT_SECONDS = max(1, int(os.environ.get("OPNSENSE_API_TIMEOUT_S
 PODMAN_COMMAND_TIMEOUT_SECONDS = max(1, int(os.environ.get("PODMAN_COMMAND_TIMEOUT_SECONDS", "8")))
 OPNSENSE_BAN_ALIAS_TABLE = os.environ.get("OPNSENSE_BAN_ALIAS_TABLE", "AUTO_BAN_IPS").strip()
 OPNSENSE_KALI_ALIAS_TABLE = os.environ.get("OPNSENSE_KALI_ALIAS_TABLE", "KALI_HOST").strip()
+OPNSENSE_BAN_ALIAS_UUID = os.environ.get("OPNSENSE_BAN_ALIAS_UUID", "").strip()
+OPNSENSE_KALI_ALIAS_UUID = os.environ.get("OPNSENSE_KALI_ALIAS_UUID", "").strip()
 CORS_ALLOWED_ORIGINS = parse_csv_env("CORS_ALLOWED_ORIGINS", ["http://localhost", "http://127.0.0.1"])
 CORS_ALLOW_PRIVATE_NETWORKS = parse_bool_env("CORS_ALLOW_PRIVATE_NETWORKS", default=True)
 CORS_ALLOW_ORIGIN_REGEX = os.environ.get("CORS_ALLOW_ORIGIN_REGEX", "").strip()
@@ -128,6 +130,7 @@ TELEMETRY_EXCLUDED_IPS = {
 BAN_DURATION_CHOICES = [60, 300, 600, 1440]
 
 ALIAS_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+ALIAS_UUID_PATTERN = re.compile(r"^[A-Fa-f0-9-]{8,64}$")
 IPV4_PATTERN = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
 
 STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -150,6 +153,7 @@ app.add_middleware(
 state_lock = Lock()
 action_log_lock = Lock()
 process_registry: dict[str, subprocess.Popen[Any]] = {}
+alias_entry_cache: dict[str, dict[str, Any]] = {}
 
 SIGSTOP_SIGNAL = getattr(signal, "SIGSTOP", None)
 SIGCONT_SIGNAL = getattr(signal, "SIGCONT", None)
@@ -165,7 +169,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     },
     "web_scan": {
         "script": "web_scan.sh",
-        "description": "Nikto plus suspicious HTTP probes against the selected Ubuntu Apache2 target.",
+        "description": "Nikto plus suspicious HTTP probes against the selected Ubuntu DVWA target.",
         "category": "application",
         "osi_layer": "L7",
         "severity_hint": "medium",
@@ -181,7 +185,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     },
     "sql_injection_sim": {
         "script": "sql_injection_sim.sh",
-        "description": "SQL injection payloads and sqlmap probes against Ubuntu Apache2 web paths.",
+        "description": "SQL injection payloads and sqlmap probes against DVWA SQLi endpoints.",
         "category": "application",
         "osi_layer": "L7",
         "severity_hint": "high",
@@ -213,7 +217,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     },
     "slow_http": {
         "script": "slow_http.sh",
-        "description": "Slow HTTP style connection exhaustion against Ubuntu Apache2 using low volume.",
+        "description": "Slow HTTP style connection exhaustion against Ubuntu DVWA using low volume.",
         "category": "application",
         "osi_layer": "L7",
         "severity_hint": "medium",
@@ -221,7 +225,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     },
     "credential_stuffing_http": {
         "script": "credential_stuffing_http.sh",
-        "description": "Credential stuffing style login abuse against Ubuntu Apache2 web endpoints.",
+        "description": "Credential stuffing style login abuse against DVWA login and brute-force endpoints.",
         "category": "application",
         "osi_layer": "L7",
         "severity_hint": "high",
@@ -229,7 +233,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     },
     "command_injection_probe": {
         "script": "command_injection_probe.sh",
-        "description": "Command injection probe payloads over Ubuntu Apache2 query and POST fields.",
+        "description": "Command injection probe payloads against the DVWA command-injection endpoint.",
         "category": "application",
         "osi_layer": "L7",
         "severity_hint": "high",
@@ -268,8 +272,18 @@ kali_network_state: dict[str, Any] = load_json_dict(KALI_NETWORK_PATH) or {
     "reserved_ips": sorted(KALI_RESERVED_IPS),
     "updated_at": utcnow_iso(),
     "mode": "default",
-    "notes": "KALI_HOST auto-sync uses OPNsense REST API. REST credentials are required.",
+    "notes": "KALI_HOST Host(s) alias auto-sync uses OPNsense REST API. REST credentials are required.",
 }
+
+alias_uuid_cache: dict[str, str] = {}
+if OPNSENSE_BAN_ALIAS_UUID and ALIAS_UUID_PATTERN.fullmatch(OPNSENSE_BAN_ALIAS_UUID):
+    alias_uuid_cache[OPNSENSE_BAN_ALIAS_TABLE] = OPNSENSE_BAN_ALIAS_UUID
+if OPNSENSE_KALI_ALIAS_UUID and ALIAS_UUID_PATTERN.fullmatch(OPNSENSE_KALI_ALIAS_UUID):
+    alias_uuid_cache[OPNSENSE_KALI_ALIAS_TABLE] = OPNSENSE_KALI_ALIAS_UUID
+
+persisted_kali_alias_uuid = str(kali_network_state.get("opnsense_kali_alias_uuid", "")).strip()
+if persisted_kali_alias_uuid and ALIAS_UUID_PATTERN.fullmatch(persisted_kali_alias_uuid):
+    alias_uuid_cache[OPNSENSE_KALI_ALIAS_TABLE] = persisted_kali_alias_uuid
 
 
 def save_state(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -494,6 +508,44 @@ def validate_alias_name(alias_name: str) -> str:
     return normalized
 
 
+def validate_alias_uuid(alias_uuid: str) -> str:
+    normalized = alias_uuid.strip()
+    if not normalized:
+        raise HTTPException(status_code=500, detail="Alias UUID cannot be empty")
+    if not ALIAS_UUID_PATTERN.fullmatch(normalized):
+        raise HTTPException(status_code=500, detail=f"Alias UUID contains unsupported characters: {normalized}")
+    return normalized
+
+
+def get_alias_uuid_override(alias_name: str) -> str:
+    alias = validate_alias_name(alias_name)
+    raw_override = ""
+    if alias == OPNSENSE_BAN_ALIAS_TABLE:
+        raw_override = OPNSENSE_BAN_ALIAS_UUID
+    elif alias == OPNSENSE_KALI_ALIAS_TABLE:
+        raw_override = OPNSENSE_KALI_ALIAS_UUID
+
+    if not raw_override:
+        return ""
+    return validate_alias_uuid(raw_override)
+
+
+def remember_alias_uuid(alias_name: str, alias_uuid: str) -> None:
+    alias = validate_alias_name(alias_name)
+    uuid_value = validate_alias_uuid(alias_uuid)
+    alias_uuid_cache[alias] = uuid_value
+
+    if alias != OPNSENSE_KALI_ALIAS_TABLE:
+        return
+
+    if str(kali_network_state.get("opnsense_kali_alias_uuid", "")).strip() == uuid_value:
+        return
+
+    kali_network_state["opnsense_kali_alias_uuid"] = uuid_value
+    with state_lock:
+        save_dict_state(KALI_NETWORK_PATH, kali_network_state)
+
+
 def opnsense_api_request(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     require_opnsense_api_configured()
 
@@ -606,9 +658,313 @@ def opnsense_alias_flush(alias_name: str) -> dict[str, Any]:
     )
 
 
+def normalize_alias_content_items(raw_items: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for raw_item in raw_items:
+        item = raw_item.strip()
+        if item and item not in normalized:
+            normalized.append(item)
+    return normalized
+
+
+def parse_alias_content(raw_content: Any) -> list[str]:
+    if raw_content is None:
+        return []
+    if isinstance(raw_content, list):
+        items = [str(item).strip() for item in raw_content]
+    else:
+        items = [token.strip() for token in re.split(r"[\r\n,]+", str(raw_content))]
+    return normalize_alias_content_items(items)
+
+
+def opnsense_alias_inventory() -> dict[str, dict[str, Any]]:
+    last_error: HTTPException | None = None
+    response: dict[str, Any] | None = None
+    for _ in range(3):
+        try:
+            response = opnsense_api_request("GET", "/api/firewall/alias/get")
+            break
+        except HTTPException as exc:
+            last_error = exc
+
+    if response is None:
+        assert last_error is not None
+        raise last_error
+
+    aliases_node: Any = {}
+    if isinstance(response.get("aliases"), dict):
+        aliases_node = response["aliases"].get("alias", {})
+
+    inventory: dict[str, dict[str, Any]] = {}
+    if isinstance(aliases_node, dict):
+        iterator = aliases_node.items()
+    elif isinstance(aliases_node, list):
+        iterator = ((str(item.get("uuid", "")).strip(), item) for item in aliases_node if isinstance(item, dict))
+    else:
+        iterator = []
+
+    for alias_uuid, payload in iterator:
+        if not isinstance(payload, dict):
+            continue
+        alias_name = str(payload.get("name", "")).strip()
+        if not alias_name:
+            continue
+        inventory[alias_name] = {
+            "uuid": str(alias_uuid).strip(),
+            "type": str(payload.get("type", "")).strip().lower(),
+            "content_items": parse_alias_content(payload.get("content", "")),
+        }
+
+    # Cache latest successful inventory snapshot to survive transient API failures.
+    alias_entry_cache.clear()
+    alias_entry_cache.update({name: dict(entry) for name, entry in inventory.items()})
+    return inventory
+
+
+def opnsense_get_alias_entry(alias_name: str) -> dict[str, Any]:
+    alias = validate_alias_name(alias_name)
+    alias_uuid_override = get_alias_uuid_override(alias)
+    if alias_uuid_override:
+        remember_alias_uuid(alias, alias_uuid_override)
+
+    cached_uuid = alias_uuid_cache.get(alias, "")
+    inventory_error: Any = None
+
+    try:
+        inventory = opnsense_alias_inventory()
+    except HTTPException as exc:
+        inventory = {}
+        inventory_error = exc.detail
+
+    entry = inventory.get(alias)
+    if entry:
+        resolved_entry = dict(entry)
+        if alias_uuid_override:
+            resolved_entry["inventory_uuid"] = resolved_entry.get("uuid", "")
+            resolved_entry["uuid"] = alias_uuid_override
+            resolved_entry["uuid_source"] = "env_override"
+            remember_alias_uuid(alias, alias_uuid_override)
+        else:
+            resolved_entry["uuid_source"] = "inventory"
+            discovered_uuid = str(resolved_entry.get("uuid", "")).strip()
+            if discovered_uuid:
+                remember_alias_uuid(alias, discovered_uuid)
+        return resolved_entry
+
+    cached_entry = alias_entry_cache.get(alias)
+
+    if cached_entry and alias_uuid_override:
+        resolved_cached = dict(cached_entry)
+        resolved_cached["inventory_uuid"] = resolved_cached.get("uuid", "")
+        resolved_cached["uuid"] = alias_uuid_override
+        resolved_cached["uuid_source"] = "env_override+cache"
+        return resolved_cached
+
+    if alias_uuid_override:
+        cached_type = str(cached_entry.get("type", "")).strip().lower() if cached_entry else "unknown"
+        cached_items = list(cached_entry.get("content_items", [])) if cached_entry else []
+        return {
+            "uuid": alias_uuid_override,
+            "type": cached_type or "unknown",
+            "content_items": cached_items,
+            "uuid_source": "env_override",
+            "inventory_error": inventory_error,
+        }
+
+    if cached_uuid:
+        cached_type = str(cached_entry.get("type", "")).strip().lower() if cached_entry else "unknown"
+        cached_items = list(cached_entry.get("content_items", [])) if cached_entry else []
+        return {
+            "uuid": cached_uuid,
+            "type": cached_type or "unknown",
+            "content_items": cached_items,
+            "uuid_source": "uuid_cache",
+            "inventory_error": inventory_error,
+        }
+
+    if cached_entry:
+        resolved_cached = dict(cached_entry)
+        resolved_cached["uuid_source"] = "cache"
+        resolved_cached["inventory_error"] = inventory_error
+        return resolved_cached
+
+    if inventory_error is not None:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Unable to read alias inventory and no UUID override was provided",
+                "alias": alias,
+                "inventory_error": inventory_error,
+                "hints": {
+                    "ban_alias_uuid_env": "OPNSENSE_BAN_ALIAS_UUID",
+                    "kali_alias_uuid_env": "OPNSENSE_KALI_ALIAS_UUID",
+                },
+                "cached_aliases": sorted(alias_uuid_cache.keys()),
+            },
+        )
+
+    raise HTTPException(
+        status_code=502,
+        detail={
+            "message": "Alias not found in OPNsense alias inventory",
+            "alias": alias,
+        },
+    )
+
+
+def opnsense_set_alias_content(alias_name: str, content_items: list[str], alias_entry: dict[str, Any] | None = None) -> dict[str, Any]:
+    alias = validate_alias_name(alias_name)
+    entry = alias_entry or opnsense_get_alias_entry(alias)
+    alias_uuid = str(entry.get("uuid", "")).strip()
+    if not alias_uuid:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Alias UUID is missing; cannot update alias content",
+                "alias": alias,
+            },
+        )
+
+    normalized_content = normalize_alias_content_items([str(item) for item in content_items])
+    payload = {"alias": {"content": "\n".join(normalized_content)}}
+    candidate_paths = [
+        f"/api/firewall/alias/set/{urllib_parse.quote(alias_uuid, safe='')}",
+        f"/api/firewall/alias/setItem/{urllib_parse.quote(alias_uuid, safe='')}",
+    ]
+
+    failures: list[dict[str, Any]] = []
+    for path in candidate_paths:
+        try:
+            set_response = opnsense_api_request("POST", path, payload=payload)
+            reconfigure_response = opnsense_api_request("POST", "/api/firewall/alias/reconfigure", payload={})
+            return {
+                "strategy": "alias_set_reconfigure",
+                "alias": alias,
+                "uuid": alias_uuid,
+                "path": path,
+                "content_items": normalized_content,
+                "set": set_response,
+                "reconfigure": reconfigure_response,
+            }
+        except HTTPException as exc:
+            failures.append({"path": path, "error": exc.detail})
+
+    raise HTTPException(
+        status_code=502,
+        detail={
+            "message": "Unable to update alias content via OPNsense API",
+            "alias": alias,
+            "uuid": alias_uuid,
+            "attempts": failures,
+        },
+    )
+
+
+def seed_alias_content_from_state(alias_name: str, current_items: list[str]) -> list[str]:
+    alias = validate_alias_name(alias_name)
+    normalized_current = normalize_alias_content_items(current_items)
+    if normalized_current:
+        return normalized_current
+
+    if alias != OPNSENSE_BAN_ALIAS_TABLE:
+        return []
+
+    # If alias inventory is unavailable, use active bans as best-effort source of truth.
+    return sorted(
+        {
+            str(item.get("ip", "")).strip()
+            for item in ban_log
+            if str(item.get("status", "")).strip() == "active" and str(item.get("ip", "")).strip()
+        }
+    )
+
+
+def opnsense_alias_add_compat(alias_name: str, address: str) -> dict[str, Any]:
+    alias = validate_alias_name(alias_name)
+    normalized_ip = validate_ipv4(address)
+    alias_entry: dict[str, Any] | None = None
+    lookup_error: Any = None
+
+    try:
+        alias_entry = opnsense_get_alias_entry(alias)
+    except HTTPException as exc:
+        lookup_error = exc.detail
+
+    if alias_entry and str(alias_entry.get("type", "")).lower() == "host":
+        content_items = seed_alias_content_from_state(alias, list(alias_entry.get("content_items", [])))
+        if normalized_ip not in content_items:
+            content_items.append(normalized_ip)
+        host_result = opnsense_set_alias_content(alias, content_items, alias_entry=alias_entry)
+        host_result["mode"] = "host-alias-set"
+        return host_result
+
+    try:
+        return {
+            "mode": "alias_util_add",
+            "response": opnsense_alias_add(alias, normalized_ip),
+        }
+    except HTTPException as util_error:
+        # Fallback for non-table aliases where alias_util returns failures (for example Host(s)).
+        entry = alias_entry or opnsense_get_alias_entry(alias)
+        content_items = seed_alias_content_from_state(alias, list(entry.get("content_items", [])))
+        if normalized_ip not in content_items:
+            content_items.append(normalized_ip)
+        fallback_result = opnsense_set_alias_content(alias, content_items, alias_entry=entry)
+        fallback_result["mode"] = "alias_set_add_fallback"
+        fallback_result["alias_util_error"] = util_error.detail
+        if lookup_error is not None:
+            fallback_result["lookup_error"] = lookup_error
+        return fallback_result
+
+
+def opnsense_alias_delete_compat(alias_name: str, address: str) -> dict[str, Any]:
+    alias = validate_alias_name(alias_name)
+    normalized_ip = validate_ipv4(address)
+    alias_entry: dict[str, Any] | None = None
+    lookup_error: Any = None
+
+    try:
+        alias_entry = opnsense_get_alias_entry(alias)
+    except HTTPException as exc:
+        lookup_error = exc.detail
+
+    if alias_entry and str(alias_entry.get("type", "")).lower() == "host":
+        content_items = seed_alias_content_from_state(alias, list(alias_entry.get("content_items", [])))
+        content_items = [item for item in content_items if item != normalized_ip]
+        host_result = opnsense_set_alias_content(alias, content_items, alias_entry=alias_entry)
+        host_result["mode"] = "host-alias-set"
+        return host_result
+
+    try:
+        return {
+            "mode": "alias_util_delete",
+            "response": opnsense_alias_delete(alias, normalized_ip),
+        }
+    except HTTPException as util_error:
+        # Fallback for non-table aliases where alias_util returns failures (for example Host(s)).
+        entry = alias_entry or opnsense_get_alias_entry(alias)
+        content_items = seed_alias_content_from_state(alias, list(entry.get("content_items", [])))
+        content_items = [item for item in content_items if item != normalized_ip]
+        fallback_result = opnsense_set_alias_content(alias, content_items, alias_entry=entry)
+        fallback_result["mode"] = "alias_set_delete_fallback"
+        fallback_result["alias_util_error"] = util_error.detail
+        if lookup_error is not None:
+            fallback_result["lookup_error"] = lookup_error
+        return fallback_result
+
+
+def opnsense_alias_replace_single_ip(alias_name: str, address: str) -> dict[str, Any]:
+    alias = validate_alias_name(alias_name)
+    normalized_ip = validate_ipv4(address)
+    alias_entry = opnsense_get_alias_entry(alias)
+    result = opnsense_set_alias_content(alias, [normalized_ip], alias_entry=alias_entry)
+    result["mode"] = "alias_set_replace"
+    return result
+
+
 def run_firewall_ban(command_payload: dict[str, Any]) -> dict[str, str]:
     require_opnsense_api_configured()
-    response = opnsense_alias_add(OPNSENSE_BAN_ALIAS_TABLE, str(command_payload["BAN_IP"]))
+    response = opnsense_alias_add_compat(OPNSENSE_BAN_ALIAS_TABLE, str(command_payload["BAN_IP"]))
     return {
         "mode": "opnsense-rest",
         "stdout": json.dumps(response)[-400:],
@@ -618,7 +974,7 @@ def run_firewall_ban(command_payload: dict[str, Any]) -> dict[str, str]:
 
 def run_firewall_unban(command_payload: dict[str, Any]) -> dict[str, str]:
     require_opnsense_api_configured()
-    response = opnsense_alias_delete(OPNSENSE_BAN_ALIAS_TABLE, str(command_payload["BAN_IP"]))
+    response = opnsense_alias_delete_compat(OPNSENSE_BAN_ALIAS_TABLE, str(command_payload["BAN_IP"]))
     return {
         "mode": "opnsense-rest",
         "stdout": json.dumps(response)[-400:],
@@ -628,9 +984,45 @@ def run_firewall_unban(command_payload: dict[str, Any]) -> dict[str, str]:
 
 def sync_kali_alias_table(ip_address: str) -> dict[str, str]:
     require_opnsense_api_configured()
-    flush_response = opnsense_alias_flush(OPNSENSE_KALI_ALIAS_TABLE)
-    add_response = opnsense_alias_add(OPNSENSE_KALI_ALIAS_TABLE, ip_address)
-    merged_output = json.dumps({"flush": flush_response, "add": add_response})
+    alias_entry: dict[str, Any] | None = None
+
+    try:
+        alias_entry = opnsense_get_alias_entry(OPNSENSE_KALI_ALIAS_TABLE)
+    except HTTPException:
+        alias_entry = None
+
+    # Host(s) aliases are config-backed; update content then reconfigure.
+    if alias_entry and (
+        str(alias_entry.get("type", "")).lower() == "host"
+        or str(alias_entry.get("uuid_source", "")).lower() == "env_override"
+    ):
+        response = opnsense_alias_replace_single_ip(OPNSENSE_KALI_ALIAS_TABLE, ip_address)
+        return {
+            "mode": "opnsense-rest",
+            "stdout": json.dumps({"strategy": "host_replace", "result": response})[-400:],
+            "stderr": "",
+        }
+
+    try:
+        flush_response = opnsense_alias_flush(OPNSENSE_KALI_ALIAS_TABLE)
+        add_response = opnsense_alias_add(OPNSENSE_KALI_ALIAS_TABLE, ip_address)
+        merged_output = json.dumps(
+            {
+                "strategy": "flush_add",
+                "flush": flush_response,
+                "add": add_response,
+            }
+        )
+    except HTTPException as primary_error:
+        # Fallback path for environments where alias_util is not valid for this alias type.
+        replace_result = opnsense_alias_replace_single_ip(OPNSENSE_KALI_ALIAS_TABLE, ip_address)
+        merged_output = json.dumps(
+            {
+                "strategy": "replace_single_ip_fallback",
+                "primary_error": primary_error.detail,
+                "replace": replace_result,
+            }
+        )
     return {
         "mode": "opnsense-rest",
         "stdout": merged_output[-400:],
@@ -767,6 +1159,7 @@ def extract_timestamp(line: str) -> str:
 def parse_event(line: str) -> dict[str, Any]:
     tokens = [token.strip() for token in re.split(r"[,\s]+", line) if token.strip()]
     lower_line = line.lower()
+    event_source = "suricata" if "suricata[" in lower_line else "filterlog" if "filterlog[" in lower_line else "syslog"
     ip_matches = IPV4_PATTERN.findall(line)
     src_ip = ip_matches[0] if len(ip_matches) > 0 else "unknown"
     dst_ip = ip_matches[1] if len(ip_matches) > 1 else "unknown"
@@ -812,6 +1205,12 @@ def parse_event(line: str) -> dict[str, Any]:
                 ]
                 if len(numeric_after) >= 2 and 0 < numeric_after[1] <= 65535:
                     dst_port = numeric_after[1]
+    if dst_port == 0:
+        arrow_port_match = re.search(r"->\s+[0-9a-fA-F:.]+:(\d+)\b", line)
+        if arrow_port_match:
+            candidate = int(arrow_port_match.group(1))
+            if 0 < candidate <= 65535:
+                dst_port = candidate
 
     proto = "UNKNOWN"
     proto_match = re.search(r"\b(tcp|udp|icmp|icmpv6)\b", line, flags=re.IGNORECASE)
@@ -825,10 +1224,32 @@ def parse_event(line: str) -> dict[str, Any]:
             if mapped:
                 proto = mapped
                 break
+    if proto == "UNKNOWN":
+        brace_proto_match = re.search(r"\{\s*([A-Za-z0-9]+)\s*\}", line)
+        if brace_proto_match:
+            proto = brace_proto_match.group(1).upper()
 
     msg_match = re.search(r'msg[:=]"([^"]+)"', line, flags=re.IGNORECASE)
-    signature = msg_match.group(1) if msg_match else line[:120]
-    if any(token in lower_line for token in ["drop", "block", "reject", "deny"]):
+    if msg_match:
+        signature = msg_match.group(1)
+    elif event_source == "suricata":
+        suricata_sig_match = re.search(
+            r"suricata\[\d+\]\s+\[\d+:\d+:\d+\]\s+(.*?)\s+\[Classification:",
+            line,
+            flags=re.IGNORECASE,
+        )
+        if not suricata_sig_match:
+            suricata_sig_match = re.search(r"\[\d+:\d+:\d+\]\s+(.*?)\s+\{[A-Za-z0-9_-]+\}", line)
+        signature = suricata_sig_match.group(1).strip() if suricata_sig_match else line[:120]
+    else:
+        signature = line[:120]
+
+    if event_source == "suricata":
+        if any(token in lower_line for token in ["drop", "block", "reject", "deny"]):
+            action = "block"
+        else:
+            action = "alert"
+    elif any(token in lower_line for token in ["drop", "block", "reject", "deny"]):
         action = "block"
     elif "alert" in lower_line:
         action = "alert"
@@ -841,6 +1262,8 @@ def parse_event(line: str) -> dict[str, Any]:
 
     priority_value = int(priority_match.group(1)) if priority_match else None
     severity_value = int(severity_match.group(1)) if severity_match else None
+    rule_label_match = re.search(r",([a-f0-9]{32}),em\d+,match,", line, flags=re.IGNORECASE)
+    rule_label = rule_label_match.group(1).lower() if rule_label_match else ""
 
     high_keywords = [
         "critical",
@@ -884,9 +1307,9 @@ def parse_event(line: str) -> dict[str, Any]:
     elif any(token in severity_text for token in medium_keywords):
         severity = "medium"
     elif action == "block":
-        severity = "medium"
+        severity = "low"
     elif action == "alert":
-        severity = "medium"
+        severity = "low"
     else:
         severity = "low"
     return {
@@ -899,15 +1322,22 @@ def parse_event(line: str) -> dict[str, Any]:
         "action": action,
         "signature": signature,
         "severity": severity,
+        "event_source": event_source,
+        "priority": priority_value,
+        "rule_label": rule_label,
     }
 
 
-def is_lab_ip(ip_value: str) -> bool:
+def ip_in_subnets(ip_value: str, subnets: list[ipaddress.IPv4Network]) -> bool:
     try:
         address = ipaddress.ip_address(ip_value)
     except ValueError:
         return False
-    return any(address in subnet for subnet in TELEMETRY_LAB_SUBNETS)
+    return any(address in subnet for subnet in subnets)
+
+
+def is_lab_ip(ip_value: str) -> bool:
+    return ip_in_subnets(ip_value, TELEMETRY_LAB_SUBNETS)
 
 
 def is_lab_event(event: dict[str, Any]) -> bool:
@@ -940,21 +1370,34 @@ def summarize_events(events: list[dict[str, Any]], bucket_seconds: int = 300) ->
     normalized_bucket_seconds = bucket_seconds if bucket_seconds in TELEMETRY_BUCKET_SECONDS_CHOICES else 300
     if not events:
         return {
+            "total_events": 0,
             "total_alerts": 0,
             "blocked": 0,
-            "high_sev": 0,
-            "medium_sev": 0,
-            "low_sev": 0,
+            "passed": 0,
+            "alerts": 0,
+            "suricata_alerts": 0,
+            "filterlog_events": 0,
+            "syslog_events": 0,
             "anomalies": 0,
             "active_flows": 0,
             "bucket_seconds": normalized_bucket_seconds,
             "over_time": [],
             "top_sources": [],
             "top_ports": [],
+            "top_protocols": [],
+            "event_sources": [],
+            "top_signatures": [],
         }
-    severity_counter = Counter(item["severity"] for item in events)
+    action_counter = Counter(item["action"] for item in events)
+    proto_counter = Counter(item["proto"] for item in events if item.get("proto") and item["proto"] != "UNKNOWN")
+    event_source_counter = Counter(item.get("event_source", "syslog") for item in events)
     source_counter = Counter(item["src_ip"] for item in events if item["src_ip"] != "unknown")
     port_counter = Counter(item["dst_port"] for item in events if item["dst_port"])
+    signature_counter = Counter(
+        item["signature"]
+        for item in events
+        if item.get("event_source") == "suricata" and item.get("signature")
+    )
     bucket_counter: defaultdict[int, int] = defaultdict(int)
     latest_bucket_epoch: int | None = None
     for item in events:
@@ -979,11 +1422,14 @@ def summarize_events(events: list[dict[str, Any]], bucket_seconds: int = 300) ->
             })
 
     return {
+        "total_events": len(events),
         "total_alerts": len(events),
-        "blocked": sum(1 for item in events if item["action"] == "block"),
-        "high_sev": severity_counter.get("high", 0),
-        "medium_sev": severity_counter.get("medium", 0),
-        "low_sev": severity_counter.get("low", 0),
+        "blocked": action_counter.get("block", 0),
+        "passed": action_counter.get("pass", 0),
+        "alerts": action_counter.get("alert", 0),
+        "suricata_alerts": event_source_counter.get("suricata", 0),
+        "filterlog_events": event_source_counter.get("filterlog", 0),
+        "syslog_events": event_source_counter.get("syslog", 0),
         "anomalies": sum(1 for item in events if "anomaly" in item["raw"].lower()),
         "active_flows": len({(item["src_ip"], item["dst_ip"], item["dst_port"]) for item in events}),
         "bucket_seconds": normalized_bucket_seconds,
@@ -995,6 +1441,18 @@ def summarize_events(events: list[dict[str, Any]], bucket_seconds: int = 300) ->
         "top_ports": [
             {"port": port, "count": count}
             for port, count in port_counter.most_common(5)
+        ],
+        "top_protocols": [
+            {"proto": proto, "count": count}
+            for proto, count in proto_counter.most_common(6)
+        ],
+        "event_sources": [
+            {"source": source_name, "count": count}
+            for source_name, count in event_source_counter.most_common(4)
+        ],
+        "top_signatures": [
+            {"signature": signature, "count": count}
+            for signature, count in signature_counter.most_common(5)
         ],
     }
 
@@ -1129,6 +1587,8 @@ def get_config(x_api_token: str = Header(default="")) -> dict[str, Any]:
         "podman_command_timeout_seconds": PODMAN_COMMAND_TIMEOUT_SECONDS,
         "opnsense_ban_alias_table": OPNSENSE_BAN_ALIAS_TABLE,
         "opnsense_kali_alias_table": OPNSENSE_KALI_ALIAS_TABLE,
+        "opnsense_ban_alias_uuid_override": OPNSENSE_BAN_ALIAS_UUID,
+        "opnsense_kali_alias_uuid_override": OPNSENSE_KALI_ALIAS_UUID,
         "default_target_ip": TARGET_DEFAULT,
         "default_target_profile": TARGET_PROFILE,
         "dashboard_action_log_path": str(DASHBOARD_ACTION_LOG_PATH),
@@ -1141,7 +1601,7 @@ def get_config(x_api_token: str = Header(default="")) -> dict[str, Any]:
             "current_ip": kali_network_state.get("ip", KALI_CURRENT_IP),
             "gateway": KALI_GATEWAY_IP,
             "interface": KALI_INTERFACE,
-            "notes": "KALI_HOST auto-sync uses OPNsense REST API.",
+            "notes": "KALI_HOST Host(s) alias auto-sync uses OPNsense REST API.",
         },
     }
 
@@ -1301,6 +1761,8 @@ def firewall_status(x_api_token: str = Header(default="")) -> dict[str, Any]:
         "opnsense_api_timeout_seconds": OPNSENSE_API_TIMEOUT_SECONDS,
         "opnsense_ban_alias_table": OPNSENSE_BAN_ALIAS_TABLE,
         "opnsense_kali_alias_table": OPNSENSE_KALI_ALIAS_TABLE,
+        "opnsense_ban_alias_uuid_override": OPNSENSE_BAN_ALIAS_UUID,
+        "opnsense_kali_alias_uuid_override": OPNSENSE_KALI_ALIAS_UUID,
         "active_bans": len([item for item in ban_log if item["status"] == "active"]),
         "supported_durations_minutes": BAN_DURATION_CHOICES,
     }
@@ -1351,7 +1813,8 @@ def get_kali_network(x_api_token: str = Header(default="")) -> dict[str, Any]:
         "reserved_ips": sorted(KALI_RESERVED_IPS),
         "mode": kali_network_state.get("mode", "default"),
         "updated_at": kali_network_state.get("updated_at", utcnow_iso()),
-        "notes": "KALI_HOST auto-sync uses OPNsense REST API.",
+        "opnsense_kali_alias_uuid": kali_network_state.get("opnsense_kali_alias_uuid", ""),
+        "notes": "KALI_HOST Host(s) alias auto-sync uses OPNsense REST API.",
     }
 
 
@@ -1374,7 +1837,8 @@ def set_kali_network(req: KaliIpAssignRequest, x_api_token: str = Header(default
             "updated_at": utcnow_iso(),
             "reason": req.reason,
             "mode": network_mode,
-            "notes": "KALI_HOST auto-sync uses OPNsense REST API.",
+            "opnsense_kali_alias_uuid": alias_uuid_cache.get(OPNSENSE_KALI_ALIAS_TABLE, ""),
+            "notes": "KALI_HOST Host(s) alias auto-sync uses OPNsense REST API.",
         }
     )
     with state_lock:

@@ -18,8 +18,8 @@ The scope includes architecture, implementation, and evaluation of a sidecar mod
 1. stateful segmentation and policy enforcement with OPNsense,
 2. IDS/IPS detection through Suricata,
 3. log collection and visualization,
-4. anomaly and classification pipeline using Isolation Forest and Random Forest,
-5. controlled traffic generation for testing using scenario scripts and TRex.
+4. anomaly analytics pipeline using Isolation Forest,
+5. controlled traffic generation for testing using scenario scripts (TRex archived for later use).
 
 ### 1.2 Scope of Project Impact
 
@@ -140,7 +140,7 @@ The project implements a sidecar-based adaptive firewall architecture.
 3. Firewall and IDS events are exported using syslog.
 4. Analytics node processes logs into features.
 5. Isolation Forest gives anomaly score trends.
-6. Random Forest classifies known scenario classes.
+6. Protocol/action context from parsed logs explains anomalous events.
 7. Dashboard combines control-plane and data-plane visibility.
 
 <image of sidecar architecture showing enforcement on firewall and analytics/inference on separate node>
@@ -170,7 +170,7 @@ The project implements a sidecar-based adaptive firewall architecture.
 2. Detect suspicious activity through Suricata rules.
 3. Export logs to centralized analytics stack.
 4. Extract and store network features for model training and scoring.
-5. Generate anomaly and class outputs and present them in dashboard.
+5. Generate anomaly and context outputs and present them in dashboard.
 6. Support repeatable scenario-based traffic generation.
 
 ### 5.2 Non-Functional Requirements
@@ -193,7 +193,7 @@ The project implements a sidecar-based adaptive firewall architecture.
 | IDS/IPS | Suricata integration |
 | Data stack | Syslog + SIEM/dashboard tooling |
 | Modeling | Python stack (pandas, scikit-learn, joblib) |
-| Traffic generation | TRex + scripted scenarios |
+| Traffic generation | scripted scenarios (+ optional archived TRex) |
 
 ---
 
@@ -217,13 +217,13 @@ Method follows build-measure-improve cycle for network defense engineering.
 
 1. transform firewall/IDS events into flow-level statistical features,
 2. train Isolation Forest baseline on mostly normal traffic,
-3. train Random Forest on labeled scenario dataset,
+3. generate anomaly-only inference outputs,
 4. integrate outputs into dashboard stream.
 
 ### 6.4 Stage 4: Operational Validation
 
 1. run scenario-based tests,
-2. execute TRex stress profiles,
+2. execute optional TRex stress profiles only when re-enabled,
 3. compare visibility and detection quality across modes.
 
 <image of methodology pipeline describing stage-wise flow from policy setup to telemetry, model scoring, and validation feedback>
@@ -238,7 +238,7 @@ Method follows build-measure-improve cycle for network defense engineering.
 2. Suricata active on relevant interfaces,
 3. centralized telemetry and dashboard,
 4. model scoring pipeline attached to processed logs,
-5. traffic from scripted tests and TRex profiles.
+5. traffic from scripted tests and optional TRex profiles.
 
 ### 7.2 Experiment Categories
 
@@ -258,7 +258,7 @@ Method follows build-measure-improve cycle for network defense engineering.
 
 1. anomaly score distribution under normal traffic,
 2. anomaly spikes under suspicious traffic,
-3. classification quality for labeled attack classes.
+3. protocol/action context quality for anomalous events.
 
 #### 7.2.4 Load Tests
 
@@ -272,8 +272,8 @@ Method follows build-measure-improve cycle for network defense engineering.
 
 | Metric Group | Metrics |
 |---|---|
-| Detection | event count, severity distribution, signature diversity |
-| Model | confusion matrix, precision, recall, macro F1, anomaly score spread |
+| Detection | event count, protocol mix, event-source mix, signature diversity |
+| Model | anomaly score spread, anomaly ratio, anomaly drift over time |
 | System | CPU, RAM, ingestion delay, packet drop |
 | Operations | run repeatability, scenario-to-alert correlation |
 
@@ -290,7 +290,7 @@ This section is currently a working draft projection and will be updated with fi
 1. clear policy enforcement between segmented zones,
 2. improved visibility through unified telemetry,
 3. anomaly layer helps spot suspicious behavior beyond direct signatures,
-4. supervised model helps classify known scenario types for faster triage.
+4. protocol/action context helps triage anomalous events faster.
 
 ### 8.2 Reporting Template for Final Numbers
 
@@ -298,11 +298,11 @@ This section is currently a working draft projection and will be updated with fi
 |---|---|---|
 | Signature detection | Total events | [ ] |
 | Signature detection | Distinct signatures | [ ] |
-| Signature detection | High/Critical share | [ ] |
+| Signature detection | Top protocol concentration | [ ] |
 | Anomaly model | Anomaly ratio | [ ] |
 | Anomaly model | Estimated false positives | [ ] |
-| Classification model | Accuracy | [ ] |
-| Classification model | Macro F1 | [ ] |
+| Context telemetry | Top event source share | [ ] |
+| Context telemetry | Anomaly-score threshold hit rate | [ ] |
 | Performance | Avg ingest delay | [ ] |
 | Performance | Peak analytics CPU | [ ] |
 | Performance | Packet drop at stress | [ ] |
@@ -313,7 +313,7 @@ From the literature and current implementation trend, some observations are expe
 
 1. signature-based engines stay strong for known threats,
 2. anomaly scoring can surface unknown or less-obvious activity,
-3. classification quality is strongly tied to label quality,
+3. anomaly quality is strongly tied to feature quality and baseline diversity,
 4. sidecar pattern keeps enforcement stable while analytics evolves.
 
 <table for discussion evidence describing each observation, supporting metric, expected trend, and interpretation>
@@ -343,7 +343,7 @@ From the literature and current implementation trend, some observations are expe
 1. configured OPNsense segmentation and firewall policy,
 2. Suricata-based IDS/IPS setup,
 3. centralized logging and dashboard views,
-4. anomaly and classification model scripts/artifacts,
+4. anomaly analytics scripts/artifacts,
 5. scenario and TRex traffic profiles,
 6. experiment logs and observations.
 

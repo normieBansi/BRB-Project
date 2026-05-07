@@ -180,12 +180,12 @@ Expected: request fails due to OPT1 egress policy.
 
 ## 4. Day 1 Suricata IDS Trigger Traffic
 
-### 4.1 Confirm Ubuntu Apache Is Running
+### 4.1 Confirm Ubuntu DVWA Is Running
 
 `[kali]`:
 
 ```bash
-curl -I http://192.168.50.10
+curl -I http://192.168.50.10/dvwa/login.php
 ```
 
 Expected: HTTP headers return.
@@ -204,7 +204,7 @@ nmap -sV -Pn 192.168.50.10
 `[kali]`:
 
 ```bash
-nikto -h http://192.168.50.10
+nikto -h http://192.168.50.10/dvwa
 ```
 
 ### 4.4 Run Manual Suspicious Probes
@@ -212,9 +212,9 @@ nikto -h http://192.168.50.10
 `[kali]`:
 
 ```bash
-curl "http://192.168.50.10/?id=1'"
-curl "http://192.168.50.10/../../../../etc/passwd"
-curl -A "sqlmap/1.0" "http://192.168.50.10/"
+curl "http://192.168.50.10/dvwa/vulnerabilities/sqli/?id=1'&Submit=Submit"
+curl "http://192.168.50.10/dvwa/vulnerabilities/fi/?page=../../../../etc/passwd"
+curl -A "sqlmap/1.0" "http://192.168.50.10/dvwa/login.php"
 ```
 
 ### 4.5 Verify Alerts in OPNsense
@@ -345,7 +345,7 @@ Expected:
 ### 5.7 Validate Updated Telemetry and Ban UX from Live Traffic
 
 1. Open dashboard Telemetry tab in browser.
-2. Confirm quick counters show Alerts, Blocked, Banned Drops, High Sev, Flows.
+2. Confirm quick counters show Total Events, Blocked Packets, Banned IP Drops, Suricata Alerts, Active Flows.
 3. Apply one ban to current Kali source IP.
 4. Generate traffic while banned:
 
@@ -353,7 +353,7 @@ Expected:
 
 ```bash
 hping3 -S -p 80 -c 50 192.168.50.10
-curl -m 2 http://192.168.50.10/ || true
+curl -m 2 http://192.168.50.10/dvwa/login.php || true
 ```
 
 Expected:
@@ -415,7 +415,9 @@ Keep a separate label note file on Debian mapping `RUN_ID -> LABEL`.
 
 ---
 
-## Day 3 - TRex Traffic Generation
+## Day 3 - TRex Traffic Generation (Archived)
+
+<!--
 
 ## 7. TRex on Debian (Recommended Path)
 
@@ -487,6 +489,8 @@ hping3 -S -p 80 --flood 192.168.50.10
 Use short controlled durations and stop with Ctrl+C.
 
 ---
+
+-->
 
 ## 8. Day 3 Final Labeled Runs for ML Training Data
 

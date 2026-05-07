@@ -6,10 +6,8 @@ from pathlib import Path
 import joblib
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import IsolationForest, RandomForestClassifier
+from sklearn.ensemble import IsolationForest
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import classification_report
-from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -23,11 +21,17 @@ def main() -> None:
     if df.empty:
         raise SystemExit("features.csv is empty")
 
-    cat_cols = ["src_ip", "dst_ip", "proto", "action", "signature"]
-    num_cols = ["dst_port", "severity"]
+    cat_cols = ["event_source", "src_ip", "dst_ip", "proto", "action", "signature", "rule_label", "direction"]
+    num_cols = ["dst_port", "priority"]
 
-    severity_map = {"high": 1, "medium": 2, "low": 3, "unknown": 2}
-    df["severity"] = df["severity"].map(severity_map).fillna(2)
+    for col in cat_cols:
+        if col not in df.columns:
+            df[col] = "unknown"
+        df[col] = df[col].astype(str).fillna("unknown")
+    for col in num_cols:
+        if col not in df.columns:
+            df[col] = 0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     feature_cols = cat_cols + num_cols
     preprocessor = ColumnTransformer(
@@ -62,43 +66,22 @@ def main() -> None:
     joblib.dump(preprocessor, BASE_DIR / "preprocessor.joblib")
     joblib.dump(iso, BASE_DIR / "isolation_forest.joblib")
 
-    if "label" in df.columns and df["label"].nunique() > 1 and not (df["label"] == "unknown").all():
-        labeled = df[df["label"] != "unknown"].copy()
-        y = labeled["label"]
-        X_labeled = labeled[feature_cols]
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_labeled, y, test_size=0.2, random_state=42, stratify=y
-        )
-        clf = Pipeline(
-            [
-                ("preprocessor", preprocessor),
-                (
-                    "classifier",
-                    RandomForestClassifier(
-                        n_estimators=300,
-                        max_depth=16,
-                        class_weight="balanced",
-                        random_state=42,
-                        n_jobs=-1,
-                    ),
-                ),
-            ]
-        )
-        clf.fit(X_train, y_train)
-        predictions = clf.predict(X_test)
-        print(classification_report(y_test, predictions))
-        joblib.dump(clf, BASE_DIR / "random_forest_pipeline.joblib")
-    else:
-        print("Skipping Random Forest: no labeled data or only one class.")
+    # This pipeline now runs in anomaly-only mode.
+    proto_distribution = (
+        {str(proto): int(count) for proto, count in df["proto"].astype(str).value_counts().items()}
+        if "proto" in df.columns
+        else {}
+    )
 
     results = {
-        "total_scored": len(df),
+        "total_scored": int(len(df)),
         "anomaly_pct": str(round((df["anomaly_flag"] == -1).mean() * 100, 1)),
-        "top_class": df.get("label", pd.Series(dtype=str)).mode().iloc[0] if "label" in df and not df["label"].empty else "unknown",
-        "distribution": dict(df.get("label", pd.Series(dtype=str)).value_counts()),
+        "top_class": "anomaly_only",
+        "distribution": proto_distribution,
         "trend": [],
     }
     (BASE_DIR / "latest_results.json").write_text(json.dumps(results), encoding="utf-8")
+    print("Training complete in anomaly-only mode (Isolation Forest + preprocessor).")
 
 
 if __name__ == "__main__":

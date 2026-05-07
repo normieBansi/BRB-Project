@@ -710,7 +710,7 @@
           <div class="panel-title">Launch & Limits</div>
           <div class="stack">
             <div>
-              <label class="field-label" for="target-ip">Target IP (Ubuntu Apache2)</label>
+              <label class="field-label" for="target-ip">Target IP (Ubuntu DVWA)</label>
               <input class="text-input" id="target-ip" value="192.168.50.10" placeholder="192.168.50.10">
             </div>
             <div class="hint">Multiple attacks can run at once, but the API caps concurrency to protect the firewall and host.</div>
@@ -801,7 +801,7 @@
     <div class="grid-2">
       <div class="panel">
         <div class="panel-title-row">
-          <div class="panel-title">Alerts Over Time</div>
+          <div class="panel-title">Events Over Time</div>
           <select id="bucket-seconds" class="chart-bucket-select" title="Timeline bucket size">
             <option value="30" selected>30s</option>
             <option value="60">1m</option>
@@ -810,12 +810,12 @@
             <option value="300">5m</option>
           </select>
         </div>
-        <div class="hint">Shows alert rate trend by bucket. Use 30s during short attack bursts to make the line shape visible.</div>
+        <div class="hint">Shows event rate trend by bucket. Use 30s during short attack bursts to make the shape visible.</div>
         <div class="chart-wrap"><canvas id="ch-timeline"></canvas></div>
       </div>
       <div class="panel">
-        <div class="panel-title">Alert Severity Distribution</div>
-        <div class="chart-wrap"><canvas id="ch-severity"></canvas></div>
+        <div class="panel-title">Packet Type Distribution</div>
+        <div class="chart-wrap"><canvas id="ch-protocols"></canvas></div>
       </div>
     </div>
     <div class="grid-2">
@@ -827,6 +827,11 @@
         <div class="panel-title">Top Destination Ports</div>
         <div class="chart-wrap"><canvas id="ch-ports"></canvas></div>
       </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Top Suricata Alert Signatures</div>
+      <div class="hint">Hover over bars to read the full alert signature from logs.</div>
+      <div class="chart-wrap"><canvas id="ch-signatures"></canvas></div>
     </div>
     <div class="panel">
       <div class="panel-title-row">
@@ -852,7 +857,8 @@
               <th>Proto</th>
               <th>Action</th>
               <th>Signature</th>
-              <th>Severity</th>
+              <th>Source</th>
+              <th>Priority</th>
             </tr>
           </thead>
           <tbody id="events-body"></tbody>
@@ -874,7 +880,7 @@
         <div class="chart-wrap"><canvas id="ch-anomaly"></canvas></div>
       </div>
       <div class="panel">
-        <div class="panel-title">Predicted Class Distribution — Random Forest</div>
+        <div class="panel-title">Observed Protocol Distribution (Parsed Log Features)</div>
         <div class="chart-wrap"><canvas id="ch-pred-dist"></canvas></div>
       </div>
     </div>
@@ -900,8 +906,8 @@
               <th>Dst Port</th>
               <th>Anomaly Score</th>
               <th>Anomaly Flag</th>
-              <th>Predicted Class</th>
-              <th>Confidence</th>
+              <th>Proto</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody id="ml-body"></tbody>
@@ -918,15 +924,15 @@
 // ───────────────────────────────────────────────────────────
 const SCEN_DESCS = {
   tcp_syn_burst:       'Sends 500 TCP SYN packets to the target to simulate a SYN flood or port scan.',
-  web_scan:            'Runs Nikto probes and curl-based injection strings against the Ubuntu DVWA target (Apache2 + PHP + MariaDB).',
+  web_scan:            'Runs Nikto probes and curl-based injection strings against the Ubuntu DVWA target.',
   ssh_bruteforce_sim:  'Issues 25 SSH login attempts in quick succession to simulate a brute force.',
-  sql_injection_sim:   'Sends SQLi payloads to the DVWA /vulnerabilities/sqli/ endpoint to trigger IDS signatures.',
+  sql_injection_sim:   'Sends SQLi payloads via DVWA SQLi endpoints to trigger IDS signatures.',
   udp_flood:           'Sends a short UDP burst for L4 volumetric testing and rate-limit checks.',
   icmp_flood:          'Sends ICMP burst traffic to exercise L3 controls and telemetry visibility.',
   fin_scan:            'Runs a FIN scan to extend transport-layer reconnaissance coverage.',
-  slow_http:           'Opens slow HTTP connections to the Ubuntu DVWA server to test low-rate application DoS handling.',
-  credential_stuffing_http: 'Attempts repeated credential login abuse patterns against the DVWA login form and brute-force module.',
-  command_injection_probe:  'Sends command-injection payloads to the DVWA /vulnerabilities/exec/ POST endpoint.',
+  slow_http:           'Opens slow Ubuntu DVWA HTTP connections to test low-rate application DoS handling.',
+  credential_stuffing_http: 'Attempts repeated credential login abuse patterns over DVWA login and brute-force endpoints.',
+  command_injection_probe:  'Sends command-injection payload patterns against the DVWA command-injection endpoint.',
 };
 
 const SCEN_META = {
@@ -968,14 +974,14 @@ let scenarioCatalog = Object.entries(SCEN_DESCS).map(([id, description]) => ({
 let controlConfig = {
   max_concurrent_runs: 3,
   default_target_ip: '192.168.50.10',
-  default_target_profile: 'ubuntu-apache2',
+  default_target_profile: 'ubuntu-dvwa',
   kali_network: {
     subnet: '192.168.60.0/24',
     reserved_ips: ['192.168.60.1', '192.168.60.2'],
     current_ip: '192.168.60.10',
     gateway: '192.168.60.1',
     interface: 'eth0',
-    notes: 'KALI_HOST auto-sync uses OPNsense REST API when API credentials are configured.',
+    notes: 'KALI_HOST Host(s) alias auto-sync uses OPNsense REST API when API credentials are configured.',
   },
 };
 let kaliNetworkState = { ...controlConfig.kali_network };
@@ -1122,7 +1128,7 @@ function renderRunCapacity() {
   const paused = pausedRuns().length;
   const limit = Number(controlConfig.max_concurrent_runs || 3);
   const reserved = (controlConfig.kali_network?.reserved_ips || []).join(', ') || 'none';
-  const targetProfile = controlConfig.default_target_profile || 'ubuntu-apache2';
+  const targetProfile = controlConfig.default_target_profile || 'ubuntu-dvwa';
   document.getElementById('run-cap-box').textContent =
     `Active runs: ${active}/${limit}\nCurrent target: ${targetIp()} (${targetProfile})\nKali subnet: ${controlConfig.kali_network?.subnet || '192.168.60.0/24'}\nReserved Kali IPs: ${reserved}`;
   document.getElementById('btn-master-stop').disabled = active === 0;
@@ -1152,7 +1158,7 @@ function renderActiveRunBox() {
 
 function renderKaliNetworkState() {
   const state = kaliNetworkState || {};
-  const notes = state.notes || 'KALI_HOST auto-sync uses OPNsense REST API when API credentials are configured.';
+  const notes = state.notes || 'KALI_HOST Host(s) alias auto-sync uses OPNsense REST API when API credentials are configured.';
   document.getElementById('kali-network-box').textContent =
     `Current IP: ${state.ip || 'unknown'}\nInterface: ${state.interface || 'eth0'}\nGateway: ${state.gateway || '192.168.60.1'}\nSubnet: ${state.subnet || '192.168.60.0/24'}\nReserved: ${(state.reserved_ips || []).join(', ')}\n${notes}`;
 }
@@ -1479,7 +1485,7 @@ async function assignKaliIp() {
       reserved_ips: controlConfig.kali_network?.reserved_ips || ['192.168.60.1', '192.168.60.2'],
       gateway: controlConfig.kali_network?.gateway || '192.168.60.1',
       interface: controlConfig.kali_network?.interface || 'eth0',
-      notes: 'Mock reassignment applied. In live mode, KALI_HOST auto-sync uses OPNsense REST API.',
+      notes: 'Mock reassignment applied. In live mode, KALI_HOST Host(s) alias auto-sync uses OPNsense REST API.',
     };
     renderKaliNetworkState();
     return;
@@ -1885,13 +1891,13 @@ async function refreshControlState() {
       gateway: '192.168.60.1',
       subnet: '192.168.60.0/24',
       reserved_ips: ['192.168.60.1', '192.168.60.2'],
-      notes: 'Mock mode: live KALI_HOST auto-sync depends on OPNsense REST API wiring.',
+      notes: 'Mock mode: live KALI_HOST Host(s) alias auto-sync depends on OPNsense REST API wiring.',
     };
     controlConfig = {
       ...controlConfig,
       max_concurrent_runs: 3,
       default_target_ip: targetIp(),
-      default_target_profile: 'ubuntu-apache2',
+      default_target_profile: 'ubuntu-dvwa',
       kali_network: { ...kaliNetworkState, current_ip: kaliNetworkState.ip },
     };
     renderScenarioCatalog();
@@ -1962,23 +1968,26 @@ function mockEvents(n = 20) {
     src_ip:    pick(sourcePool),
     dst_ip:    targetIp(),
     dst_port:  pick([80, 443, 22, 5000, 8080, 21]),
-    proto:     pick(['TCP', 'TCP', 'UDP']),
+    proto:     pick(['TCP', 'TCP', 'UDP', 'ICMP']),
     action:    pick(['alert', 'alert', 'pass', 'block']),
     signature: pick(sigs),
-    severity:  pick(['high', 'high', 'medium', 'medium', 'low']),
+    event_source: pick(['filterlog', 'filterlog', 'suricata']),
+    priority: pick([1, 2, 3, null]),
   })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
 function mockSummary() {
   const blocked = rnd(20, 70);
   return {
+    total_events: rnd(80, 250),
     total_alerts: rnd(80, 250),
     blocked,
+    passed: rnd(10, 60),
+    alerts: rnd(20, 120),
+    suricata_alerts: rnd(12, 55),
+    filterlog_events: rnd(40, 180),
+    syslog_events: rnd(0, 5),
     banned_drop_attempts: rnd(0, Math.max(5, Math.floor(blocked * 0.7))),
-    high_sev:     rnd(15, 50),
-    medium_sev:   rnd(25, 80),
-    low_sev:      rnd(10, 40),
-    anomalies:    rnd(5, 35),
     active_flows: rnd(1, 25),
     over_time: Array.from({ length: 12 }, (_, i) => ({
       label: new Date(Date.now() - (11 - i) * 300_000)
@@ -1998,11 +2007,19 @@ function mockSummary() {
       { port: 5000, count: rnd(5,  30) },
       { port: 8080, count: rnd(5,  20) },
     ],
+    top_protocols: [
+      { proto: 'TCP', count: rnd(40, 130) },
+      { proto: 'UDP', count: rnd(15, 70) },
+      { proto: 'ICMP', count: rnd(5, 30) },
+    ],
+    event_sources: [
+      { source: 'filterlog', count: rnd(40, 180) },
+      { source: 'suricata', count: rnd(12, 55) },
+    ],
   };
 }
 
 function mockMLRows(n = 15) {
-  const classes = ['benign', 'benign', 'benign', 'scan', 'web_attack', 'brute_force', 'flood'];
   return Array.from({ length: n }, () => {
     const anom = Math.random() < 0.3;
     return {
@@ -2011,24 +2028,22 @@ function mockMLRows(n = 15) {
       dst_port:        pick([80, 22, 443, 5000]),
       anomaly_score:   anom ? -(Math.random() * 0.25 + 0.05) : (Math.random() * 0.15 + 0.01),
       anomaly_flag:    anom ? -1 : 1,
-      predicted_class: anom ? pick(['scan', 'web_attack', 'brute_force']) : 'benign',
-      confidence:      Math.random() * 0.3 + 0.7,
+      proto:           pick(['TCP', 'UDP', 'ICMP']),
+      action:          pick(['alert', 'block', 'pass']),
     };
   }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
 function mockMLSummary() {
   const dist = {
-    benign:      rnd(200, 400),
-    scan:        rnd(30,  100),
-    web_attack:  rnd(20,  80),
-    brute_force: rnd(10,  50),
-    flood:       rnd(5,   30),
+    TCP:  rnd(80, 220),
+    UDP:  rnd(20, 120),
+    ICMP: rnd(5, 40),
   };
   return {
     total_scored: Object.values(dist).reduce((a, b) => a + b, 0),
     anomaly_pct:  (Math.random() * 20 + 5).toFixed(1),
-    top_class:    'benign',
+    top_class:    'anomaly_only',
     distribution: dist,
     trend: Array.from({ length: 12 }, (_, i) => ({
       label: new Date(Date.now() - (11 - i) * 300_000)
@@ -2061,41 +2076,61 @@ function summarizeTelemetryEvents(events, bucketSeconds = 30) {
     : 30;
   if (!Array.isArray(events) || events.length === 0) {
     return {
+      total_events: 0,
       total_alerts: 0,
       blocked: 0,
+      passed: 0,
+      alerts: 0,
+      suricata_alerts: 0,
+      filterlog_events: 0,
+      syslog_events: 0,
       banned_drop_attempts: 0,
-      high_sev: 0,
-      medium_sev: 0,
-      low_sev: 0,
-      anomalies: 0,
       active_flows: 0,
       bucket_seconds: normalizedBucketSeconds,
       over_time: [],
       top_sources: [],
       top_ports: [],
+      top_protocols: [],
+      event_sources: [],
+      top_signatures: [],
     };
   }
 
-  const severity = { high: 0, medium: 0, low: 0 };
   const sourceCounter = new Map();
   const portCounter = new Map();
+  const protoCounter = new Map();
+  const eventSourceCounter = new Map();
+  const signatureCounter = new Map();
   const bucketCounter = new Map();
   const flowSet = new Set();
   let blocked = 0;
-  let anomalies = 0;
+  let passed = 0;
+  let alerts = 0;
+  let suricataAlerts = 0;
+  let filterlogEvents = 0;
+  let syslogEvents = 0;
   let latestBucketEpoch = 0;
 
   events.forEach(ev => {
     const action = String(ev.action || '').toLowerCase();
     if (['block', 'drop', 'reject'].includes(action)) blocked += 1;
+    else if (action === 'alert') alerts += 1;
+    else passed += 1;
 
-    const sev = String(ev.severity || '').toLowerCase();
-    if (sev === 'high') severity.high += 1;
-    else if (sev === 'medium') severity.medium += 1;
-    else severity.low += 1;
+    const eventSource = String(ev.event_source || 'syslog').toLowerCase();
+    eventSourceCounter.set(eventSource, (eventSourceCounter.get(eventSource) || 0) + 1);
+    if (eventSource === 'suricata') {
+      suricataAlerts += 1;
+      const signature = String(ev.signature || '').trim();
+      if (signature) signatureCounter.set(signature, (signatureCounter.get(signature) || 0) + 1);
+    } else if (eventSource === 'filterlog') {
+      filterlogEvents += 1;
+    } else {
+      syslogEvents += 1;
+    }
 
-    const raw = String(ev.raw || ev.signature || '').toLowerCase();
-    if (raw.includes('anomaly')) anomalies += 1;
+    const proto = String(ev.proto || 'UNKNOWN').toUpperCase();
+    if (proto && proto !== 'UNKNOWN') protoCounter.set(proto, (protoCounter.get(proto) || 0) + 1);
 
     const srcIp = String(ev.src_ip || 'unknown');
     if (srcIp !== 'unknown') sourceCounter.set(srcIp, (sourceCounter.get(srcIp) || 0) + 1);
@@ -2138,19 +2173,39 @@ function summarizeTelemetryEvents(events, bucketSeconds = 30) {
     .slice(0, 5)
     .map(([port, count]) => ({ port, count }));
 
+  const topProtocols = Array.from(protoCounter.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([proto, count]) => ({ proto, count }));
+
+  const eventSources = Array.from(eventSourceCounter.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([source, count]) => ({ source, count }));
+
+  const topSignatures = Array.from(signatureCounter.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([signature, count]) => ({ signature, count }));
+
   return {
+    total_events: events.length,
     total_alerts: events.length,
     blocked,
+    passed,
+    alerts,
+    suricata_alerts: suricataAlerts,
+    filterlog_events: filterlogEvents,
+    syslog_events: syslogEvents,
     banned_drop_attempts: 0,
-    high_sev: severity.high,
-    medium_sev: severity.medium,
-    low_sev: severity.low,
-    anomalies,
     active_flows: flowSet.size,
     bucket_seconds: normalizedBucketSeconds,
     over_time: overTime,
     top_sources: topSources,
     top_ports: topPorts,
+    top_protocols: topProtocols,
+    event_sources: eventSources,
+    top_signatures: topSignatures,
   };
 }
 
@@ -2209,9 +2264,10 @@ async function refreshTelemetry() {
 
   renderSummaryCards(summary);
   renderTimeline(summary);
-  renderSeverity(summary);
+  renderProtocolMix(summary);
   renderSources(summary);
   renderPorts(summary);
+  renderSuricataSignatures(summary);
   renderEventsTable(events);
 }
 
@@ -2219,12 +2275,12 @@ function renderSummaryCards(s) {
   const el = document.getElementById('summary-cards');
   el.innerHTML = '';
   [
-    { label: 'Total Alerts',  val: s.total_alerts,  cls: 'red'    },
-    { label: 'Blocked',       val: s.blocked,       cls: 'red'    },
+    { label: 'Total Events',  val: s.total_events ?? s.total_alerts ?? 0, cls: 'red' },
+    { label: 'Blocked Packets', val: s.blocked ?? 0, cls: 'red' },
     { label: 'Banned IP Drops', val: s.banned_drop_attempts ?? 0, cls: 'red' },
-    { label: 'High Severity', val: s.high_sev,      cls: 'yellow' },
-    { label: 'Anomalies',     val: s.anomalies,     cls: 'orange' },
-    { label: 'Active Flows',  val: s.active_flows,  cls: 'blue'   },
+    { label: 'Suricata Alerts', val: s.suricata_alerts ?? 0, cls: 'yellow' },
+    { label: 'Filterlog Events', val: s.filterlog_events ?? 0, cls: 'orange' },
+    { label: 'Active Flows',  val: s.active_flows ?? 0, cls: 'blue' },
   ].forEach(item => {
     const card  = document.createElement('div'); card.className = 'card';
     const label = document.createElement('div'); label.className = 'card-label'; label.textContent = item.label;
@@ -2267,21 +2323,28 @@ function renderTimeline(s) {
   });
 }
 
-function renderSeverity(s) {
-  const values = [s.high_sev, s.medium_sev, s.low_sev];
-  if (charts.severity) {
-    charts.severity.data.datasets[0].data = values;
-    charts.severity.update('none');
+function renderProtocolMix(s) {
+  const protoRows = Array.isArray(s.top_protocols) ? s.top_protocols : [];
+  const labels = protoRows.map(item => String(item.proto || 'UNKNOWN'));
+  const values = protoRows.map(item => Number(item.count || 0));
+  if (!labels.length) {
+    labels.push('No protocol data');
+    values.push(0);
+  }
+  if (charts.protocols) {
+    charts.protocols.data.labels = labels;
+    charts.protocols.data.datasets[0].data = values;
+    charts.protocols.update('none');
     return;
   }
-  const ctx = document.getElementById('ch-severity').getContext('2d');
-  charts.severity = new Chart(ctx, {
+  const ctx = document.getElementById('ch-protocols').getContext('2d');
+  charts.protocols = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: ['High', 'Medium', 'Low'],
+      labels,
       datasets: [{
         data: values,
-        backgroundColor: ['#f85149', '#d29922', '#3fb950'],
+        backgroundColor: ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#8b949e'],
         borderWidth: 0,
       }],
     },
@@ -2332,6 +2395,55 @@ function renderPorts(s) {
   });
 }
 
+function renderSuricataSignatures(s) {
+  const rows = Array.isArray(s.top_signatures) ? s.top_signatures : [];
+  const fullLabels = rows.map(item => String(item.signature || '').trim() || 'unknown');
+  const labels = fullLabels.map(text => (text.length > 84 ? text.slice(0, 81) + '...' : text));
+  const values = rows.map(item => Number(item.count || 0));
+
+  if (!labels.length) {
+    labels.push('No Suricata signatures');
+    values.push(0);
+    fullLabels.push('No Suricata signatures in current event window');
+  }
+
+  if (charts.signatures) {
+    charts.signatures.data.labels = labels;
+    charts.signatures.data.datasets[0].data = values;
+    charts.signatures._fullLabels = fullLabels;
+    charts.signatures.update('none');
+    return;
+  }
+
+  const ctx = document.getElementById('ch-signatures').getContext('2d');
+  charts.signatures = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: '#f85149' }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title(items) {
+              const idx = items?.[0]?.dataIndex ?? 0;
+              return charts.signatures?._fullLabels?.[idx] || labels[idx];
+            },
+            label(ctx) {
+              return ` Count: ${ctx.parsed.x}`;
+            },
+          },
+        },
+      },
+    },
+  });
+  charts.signatures._fullLabels = fullLabels;
+}
+
 function renderEventsTable(events) {
   const tbody = document.getElementById('events-body');
   tbody.innerHTML = '';
@@ -2347,7 +2459,10 @@ function renderEventsTable(events) {
     const tdA = document.createElement('td'); tdA.appendChild(actionBadge(ev.action));   tr.appendChild(tdA);
     const tdS = document.createElement('td'); tdS.textContent = ev.signature;
     tdS.className = 'truncate'; tdS.title = ev.signature;                                tr.appendChild(tdS);
-    const tdSv = document.createElement('td'); tdSv.appendChild(severityBadge(ev.severity)); tr.appendChild(tdSv);
+    const source = String(ev.event_source || 'syslog').toUpperCase();
+    const sourceClass = source === 'SURICATA' ? 'b-alert' : (source === 'FILTERLOG' ? 'b-info' : 'b-pass');
+    const tdSource = document.createElement('td'); tdSource.appendChild(badge(source, sourceClass)); tr.appendChild(tdSource);
+    tr.append(td(ev.priority ?? '-'));
     tbody.appendChild(tr);
   });
 }
@@ -2390,7 +2505,7 @@ function renderMLCards(s) {
   [
     { label: 'Total Scored',  val: s.total_scored,       cls: 'blue'   },
     { label: 'Anomaly Rate',  val: s.anomaly_pct + '%',  cls: 'orange' },
-    { label: 'Top Class',     val: s.top_class,          cls: 'green'  },
+    { label: 'Mode',          val: s.top_class || 'anomaly_only', cls: 'green'  },
   ].forEach(item => {
     const card  = document.createElement('div'); card.className = 'card';
     const label = document.createElement('div'); label.className = 'card-label'; label.textContent = item.label;
@@ -2466,19 +2581,17 @@ function renderMLTable(rows) {
   const tbody = document.getElementById('ml-body');
   tbody.innerHTML = '';
   rows.forEach(row => {
+    const score = Number(row.anomaly_score || 0);
     const tr = document.createElement('tr');
     tr.append(
       td(fmtTime(row.timestamp)),
       td(row.src_ip),
       td(row.dst_port),
-      td(parseFloat(row.anomaly_score).toFixed(4)),
+      td(Number.isFinite(score) ? score.toFixed(4) : '0.0000'),
     );
     const tdF = document.createElement('td'); tdF.appendChild(anomalyBadge(row.anomaly_flag)); tr.appendChild(tdF);
-    tr.append(td(row.predicted_class));
-    const conf = document.createElement('td');
-    const pct  = (parseFloat(row.confidence) * 100).toFixed(1) + '%';
-    conf.textContent = pct;
-    tr.appendChild(conf);
+    tr.append(td(row.proto || 'UNKNOWN'));
+    tr.append(td(row.action || 'unknown'));
     tbody.appendChild(tr);
   });
 }

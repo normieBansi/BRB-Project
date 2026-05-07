@@ -15,15 +15,18 @@ def main() -> None:
     preprocessor = joblib.load(BASE_DIR / "preprocessor.joblib")
     iso = joblib.load(BASE_DIR / "isolation_forest.joblib")
 
-    clf_path = BASE_DIR / "random_forest_pipeline.joblib"
-    classifier = joblib.load(clf_path) if clf_path.exists() else None
-
     df = pd.read_csv(BASE_DIR / "features.csv")
-    cat_cols = ["src_ip", "dst_ip", "proto", "action", "signature"]
-    num_cols = ["dst_port", "severity"]
+    cat_cols = ["event_source", "src_ip", "dst_ip", "proto", "action", "signature", "rule_label", "direction"]
+    num_cols = ["dst_port", "priority"]
 
-    severity_map = {"high": 1, "medium": 2, "low": 3, "unknown": 2}
-    df["severity"] = df["severity"].map(severity_map).fillna(2)
+    for col in cat_cols:
+        if col not in df.columns:
+            df[col] = "unknown"
+        df[col] = df[col].astype(str).fillna("unknown")
+    for col in num_cols:
+        if col not in df.columns:
+            df[col] = 0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     X = df[cat_cols + num_cols].copy()
     X_prepared = preprocessor.transform(X)
@@ -31,26 +34,21 @@ def main() -> None:
     df["anomaly_flag"] = iso.predict(X_prepared)
     df["anomaly_score"] = iso.decision_function(X_prepared)
 
-    if classifier is not None:
-        df["predicted_class"] = classifier.predict(X)
-        probabilities = classifier.predict_proba(X)
-        df["confidence"] = probabilities.max(axis=1)
-    else:
-        df["predicted_class"] = "unknown"
-        df["confidence"] = 0.0
-
     predictions: list[dict[str, object]] = []
     for _, row in df.tail(50).iterrows():
+        ts_value = row.get("timestamp", "")
+        normalized_ts = str(ts_value) if str(ts_value).strip() else datetime.now(timezone.utc).isoformat()
         predictions.append(
             {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": normalized_ts,
                 "src_ip": str(row.get("src_ip", "unknown")),
                 "dst_ip": str(row.get("dst_ip", "unknown")),
                 "dst_port": int(row["dst_port"]),
+                "proto": str(row.get("proto", "UNKNOWN")),
+                "action": str(row.get("action", "pass")),
+                "signature": str(row.get("signature", ""))[:120],
                 "anomaly_score": round(float(row["anomaly_score"]), 4),
                 "anomaly_flag": int(row["anomaly_flag"]),
-                "predicted_class": str(row["predicted_class"]),
-                "confidence": round(float(row["confidence"]), 4),
             }
         )
 

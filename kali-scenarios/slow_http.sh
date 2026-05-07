@@ -17,7 +17,7 @@ for _ in range(12):
     sock.settimeout(3)
     try:
         sock.connect((target, 80))
-        sock.sendall(b"GET / HTTP/1.1\r\nHost: test\r\n")
+        sock.sendall(b"GET /dvwa/login.php HTTP/1.1\r\nHost: test\r\n")
         sockets.append(sock)
     except OSError:
         sock.close()
