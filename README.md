@@ -26,6 +26,25 @@ The platform is intentionally engineered as a measurement system for network def
 
 How can we verify that a network security control behaves as expected under realistic attack traffic, telemetry variation, and operational constraints?
 
+## Technology Stack
+
+The stack is selected for observability, deterministic control behavior, and reproducible lab validation rather than production throughput optimization.
+
+| Layer | Technologies | Responsibility in this framework |
+| --- | --- | --- |
+| Hypervisor and Lab Runtime | Virtualized lab environment, segmented virtual networks | Hosts isolated security zones and reproducible test topology |
+| Firewall and Policy Engine | OPNsense, pf, alias tables, rule ordering | Enforces pass and block logic, state tracking, and default deny behavior |
+| Detection Engine | Suricata in IDS-oriented mode | Deep packet and signature inspection for threat visibility |
+| Firewall Management API | OPNsense REST endpoints (alias, reconfigure, diagnostics) | Allows programmatic policy updates and operational introspection |
+| Control Service | FastAPI application in control-api/app.py | Exposes control endpoints, orchestrates alias updates, serves telemetry summaries |
+| Reliability Layer | Alias inventory retry logic, UUID overrides, UUID and alias caches, persisted state file | Reduces intermittent API fragility and preserves deterministic updates |
+| Telemetry Transport | OPNsense log forwarding plus rsyslog on Ubuntu | Collects pf filterlog and Suricata telemetry streams |
+| Data Engineering | Python parsers and feature pipeline in ml/ | Normalizes logs into feature schema for downstream analytics |
+| ML Analytics | scikit-learn Isolation Forest workflow plus model artifacts | Produces anomaly-only scoring for validation analysis |
+| Attack Simulation | Kali Linux scenario scripts in kali-scenarios/ (Podman-driven workloads) | Generates controlled adversarial traffic with known intent |
+| Visualization and Operations UI | dashboard single-page interface plus API-backed status views | Presents policy state, telemetry, and validation outcomes |
+| Artifacts and Evidence | diagnostics/, report/, generated CSV and model files | Captures proof, repeatability evidence, and interpretation context |
+
 ## Architecture
 
 The system is intentionally separated into four planes.
@@ -37,17 +56,128 @@ The system is intentionally separated into four planes.
 | Telemetry and Analytics Plane | Ubuntu, rsyslog, Python ML pipeline | Dual-stream ingestion, normalization, feature extraction, anomaly scoring |
 | Adversarial Plane | Kali scenarios in Podman | Controlled attack generation and ground-truth traffic injection |
 
-### Topology
+### Detailed Lab Topology (Logical)
 
 - Kali on OPT1 network: 192.168.60.x
 - Ubuntu target on LAN: 192.168.50.10
 - OPNsense interfaces: em2 (OPT1), em1 (LAN), em0 (WAN)
 
-Traffic path:
+```text
+                                    Management and Operator Plane
+                          +-----------------------------------------------+
+                          | Browser Dashboard and API Clients             |
+                          | - View telemetry and control state            |
+                          | - Trigger control actions                     |
+                          +------------------------+----------------------+
+                                                   |
+                                                   | HTTP(S)
+                                                   v
+                          +-----------------------------------------------+
+                          | Ubuntu Control and Analytics Host             |
+                          | - FastAPI control-api                         |
+                          | - Alias reliability logic and state           |
+                          | - rsyslog telemetry collector                 |
+                          | - ML parse/train/infer pipeline               |
+                          +------------------------+----------------------+
+                                                   |
+                                                   | HTTPS REST (OPNsense API)
+                                                   v
++-----------------------------+    em2/OPT1    +-----------------------------+    em1/LAN    +--------------------------+
+| Kali Adversarial Node(s)    |  ----------->  | OPNsense Firewall            |  -----------> | Ubuntu Target Workload   |
+| - Scenario scripts           |                | - pf rule engine             |               | - Service endpoint(s)    |
+| - Controlled malicious flows |                | - Alias table resolution     |               | - Validation target      |
+| - Source: 192.168.60.x       |  <-----------  | - Suricata IDS inspection    |  <----------- | - Host: 192.168.50.10    |
++-----------------------------+   stateful rtn +-----------------------------+   stateful rtn +--------------------------+
+                                                   |
+                                                   | em0/WAN
+                                                   v
+                                          Upstream network edge
+```
 
-Kali -> OPNsense -> Ubuntu
+### Architecture of Control Operations
 
-Return traffic is statefully tracked by pf.
+The control path is intentionally strict about alias type, UUID identity, and apply behavior.
+
+```text
+Client
+  |
+  | POST /kali/network or ban/unban endpoint
+  v
+FastAPI control layer (control-api/app.py)
+  |
+  +--> Validate request and business constraints
+  |
+  +--> Resolve alias UUID using deterministic fallback chain
+  |      1) OPNSENSE_*_ALIAS_UUID override (if present)
+  |      2) Live alias inventory call (retry up to 3 times)
+  |      3) In-memory alias_entry_cache and alias_uuid_cache
+  |      4) Persisted UUID seed from state file (for Kali alias continuity)
+  |
+  +--> Update Host(s) alias content with set/setItem-compatible path
+  |
+  +--> Trigger OPNsense alias reconfigure/apply
+  |
+  +--> Persist resulting network and UUID metadata for continuity
+  |
+  +--> Return response with diagnostic context (uuid source, alias path, status)
+```
+
+### Telemetry and Analytics Pipeline Architecture
+
+```text
+                +------------------+                +------------------+
+                | pf filterlog     |                | Suricata alerts  |
+                | (network control)|                | (detection layer)|
+                +---------+--------+                +---------+--------+
+                          |                                   |
+                          +---------------+-------------------+
+                                          |
+                                          v
+                               +---------------------+
+                               | rsyslog ingestion   |
+                               | on Ubuntu host      |
+                               +----------+----------+
+                                          |
+                                          v
+                               +---------------------+
+                               | Parser and schema   |
+                               | timestamp           |
+                               | event_source        |
+                               | src_ip, dst_ip      |
+                               | src_port, dst_port  |
+                               | proto, action       |
+                               | direction, label    |
+                               +----------+----------+
+                                          |
+                         +----------------+----------------+
+                         |                                 |
+                         v                                 v
+              +-----------------------+         +-----------------------+
+              | train.py              |         | infer.py              |
+              | Isolation Forest fit  |         | Anomaly scoring       |
+              | with preprocessor     |         | against trained model |
+              +-----------+-----------+         +-----------+-----------+
+                          |                                 |
+                          +---------------+-----------------+
+                                          |
+                                          v
+                               +---------------------+
+                               | API and dashboard   |
+                               | telemetry views     |
+                               | validation evidence |
+                               +---------------------+
+```
+
+### End-to-End Runtime Sequence (Control to Enforcement)
+
+```text
+Operator -> Dashboard -> Control API -> OPNsense API -> Alias Update -> Reconfigure
+   ^                                                                  |
+   |                                                                  v
+   +-------------------------- Status/Diagnostics <-------------------+
+
+Traffic Generator (Kali) -> pf Rules/States -> Suricata IDS -> Logs -> Analytics -> Dashboard
+```
 
 ## Why the Project Shifted from Product Thinking to Validation Thinking
 
@@ -62,14 +192,14 @@ This project externalizes those internals so policy, detection, and telemetry be
 
 ## End-to-End Data and Control Flow
 
-1. Kali scenarios generate controlled adversarial traffic.
-2. pf evaluates ordered rules and state entries.
-3. Suricata inspects allowed traffic and emits IDS alerts.
-4. OPNsense forwards telemetry streams.
-5. Ubuntu ingests and normalizes logs.
-6. The ML pipeline parses and scores events in anomaly-only mode.
-7. The control API exposes operations and telemetry views.
-8. The dashboard presents control, telemetry, and ML analytics for operator review.
+1. Kali scenarios generate controlled adversarial traffic with known intent and timing.
+2. pf evaluates ordered rules, alias membership, and connection state.
+3. Allowed flows continue and are inspected by Suricata, while denied flows remain visible in filterlog.
+4. OPNsense emits control and detection telemetry toward Ubuntu ingestion.
+5. rsyslog and parser components normalize events into a stable, analysis-ready schema.
+6. The ML workflow performs anomaly-only scoring to characterize unusual behavior patterns.
+7. The control API exposes operational controls and telemetry endpoints with diagnostic context.
+8. The dashboard consolidates control state, telemetry summaries, and model output for validation decisions.
 
 ## Engineering Philosophy
 
