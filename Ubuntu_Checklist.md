@@ -1219,36 +1219,307 @@ If 0%: the Isolation Forest's `contamination` parameter (set to 5% in `train.py`
 
 ---
 
-## 14. Migration: Deploy Dashboard to Free Web Hosting
+## 14. Migration: Deploy Dashboard on Vercel with Tailscale Tailnet
 
-### 14.1 Prepare Cloudflare Tunnel for FastAPI (on Debian)
+This section is explicit for your stated setup: dashboard hosted on Vercel, control API hosted on Debian, and access mediated by Tailscale.
 
-Optional if remote demo is required. Keep API protected and authenticated.
+### 14.1 Preflight: Confirm Current Local State
 
-### 14.2 Update CORS in Control API
+Before exposing anything remotely, verify API works locally first.
 
-1. Add the hosted dashboard origin to `CORS_ALLOWED_ORIGINS` in `~/lab/control-api/api.env`.
-2. Restart API.
+`[debian]`:
 
-### 14.3 Deploy Dashboard to GitHub Pages
+```bash
+set -a
+source ~/lab/secrets/api_token.env
+set +a
 
-1. Push `dashboard/index.html` to a Pages-enabled repository.
-2. Enable Pages in repo settings.
+curl -sS http://127.0.0.1:5000/health
+curl -sS http://127.0.0.1:5000/config -H "X-API-Token: $TOKEN" | jq
+```
 
-### 14.4 Update API URL in the Live Dashboard
+Expected:
 
-Set API Base URL in dashboard UI to your tunnel/public endpoint.
+1. `/health` returns `ok`.
+2. `/config` returns JSON with `opnsense-rest` integration details.
 
-### 14.5 Alternative: Deploy to Netlify
+### 14.2 Install and Enable Tailscale on Debian API Host
 
-Upload the same dashboard file and use the same API endpoint approach.
+Skip this subsection if Tailscale is already installed and connected.
 
-### 14.6 Security Checklist Before Going Public
+`[debian]`:
 
-1. Keep API token required.
-2. Do not expose OPNsense credentials.
-3. Do not expose internal log storage directly.
-4. Remove temporary public endpoints after demo.
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo systemctl enable --now tailscaled
+tailscale version
+```
+
+### 14.3 Join the Debian Host to Your Tailnet
+
+`[debian]`:
+
+```bash
+sudo tailscale up
+tailscale status
+tailscale ip -4
+```
+
+When `tailscale up` prints a login URL, open it in browser and approve the device.
+
+Expected:
+
+1. `tailscale status` shows the host as online.
+2. `tailscale ip -4` returns a `100.x.y.z` address.
+
+### 14.4 Expose FastAPI Privately to Tailnet with HTTPS (Recommended)
+
+This keeps the API private to authenticated tailnet users/devices while still using HTTPS (required for browser calls from Vercel).
+
+`[debian]` in a dedicated terminal:
+
+```bash
+sudo tailscale serve 5000
+```
+
+Expected terminal output includes:
+
+1. `Available within your tailnet:`
+2. An HTTPS URL similar to `https://<device>.<tailnet>.ts.net`
+3. Proxy mapping to `http://127.0.0.1:5000`
+
+Important behavior:
+
+1. This command runs in foreground. Keep that terminal open during testing.
+2. If your Tailscale client supports it and you want background mode, use `tailscale serve --help` and run the equivalent background flag on your version.
+
+### 14.5 Update CORS for Vercel and Tailnet Origins
+
+Your API must allow the dashboard origin and the tailnet HTTPS origin.
+
+`[debian]`:
+
+```bash
+cp ~/lab/control-api/api.env ~/lab/control-api/api.env.bak.$(date +%F-%H%M%S)
+nano ~/lab/control-api/api.env
+```
+
+Set `CORS_ALLOWED_ORIGINS` to include your local, Vercel, and tailnet origins.
+
+Example:
+
+```bash
+CORS_ALLOWED_ORIGINS='http://localhost,http://127.0.0.1,https://<your-project>.vercel.app,https://<device>.<tailnet>.ts.net'
+```
+
+Rules:
+
+1. Origins only, no trailing slash.
+2. Use HTTPS origins for Vercel and tailnet.
+
+### 14.6 Restart API and Verify Through Tailnet URL
+
+`[debian]`:
+
+```bash
+kill "$(cat ~/lab/control-api/api.pid)" || true
+
+set -a
+source ~/lab/secrets/api_token.env
+source ~/lab/secrets/opnsense_api.env
+source ~/lab/control-api/api.env
+set +a
+
+cd ~/lab/control-api
+source .venv/bin/activate
+nohup uvicorn app:app --host 0.0.0.0 --port 5000 > ~/lab/control-api/api.log 2>&1 &
+echo $! > ~/lab/control-api/api.pid
+sleep 1
+tail -n 20 ~/lab/control-api/api.log
+```
+
+Verify from a tailnet-connected client device (Windows or any browser machine logged into Tailscale):
+
+```bash
+curl -sS https://<device>.<tailnet>.ts.net/health
+```
+
+For an authenticated endpoint:
+
+```bash
+curl -sS https://<device>.<tailnet>.ts.net/config -H "X-API-Token: <your-token>"
+```
+
+### 14.7 Deploy Dashboard to Vercel (Beginner Step-by-Step)
+
+This subsection assumes zero Vercel experience.
+
+#### 14.7.1 One-time account setup
+
+1. Open `https://vercel.com/signup`.
+2. Sign up with GitHub (recommended) or another provider.
+3. If asked, choose the default personal account scope.
+4. Open your Vercel dashboard and confirm you can see the **Add New...** button.
+
+#### 14.7.2 Choose your deployment method
+
+1. Method A (recommended): Vercel web UI with GitHub integration.
+2. Method B: Vercel CLI from Windows terminal.
+
+Use Method A if possible because future `git push` operations auto-redeploy.
+
+#### 14.7.3 Method A: Deploy from Vercel Web UI (Recommended)
+
+Prerequisite:
+
+1. Your repository is on GitHub and contains `dashboard/index.html`.
+
+Steps:
+
+1. In Vercel dashboard, click **Add New... > Project**.
+2. Under **Import Git Repository**, connect GitHub if prompted.
+3. Select your repository and click **Import**.
+4. In **Configure Project**, set: Framework Preset `Other`, Root Directory `dashboard`, Build Command empty, Output Directory `.`, and Install Command empty.
+5. Click **Deploy**.
+6. Wait for deployment to finish and open the generated URL.
+
+Expected:
+
+1. URL format: `https://<project-name>.vercel.app`
+2. Dashboard page loads without a build step.
+
+#### 14.7.4 Method B: Deploy from Vercel CLI (Windows)
+
+Use this path if you do not want Git integration right now.
+
+`[windows]`:
+
+```bash
+node -v
+npm -v
+```
+
+If either command fails, install Node.js LTS first:
+
+```bash
+winget install OpenJS.NodeJS.LTS
+```
+
+Then deploy:
+
+```bash
+cd C:\Users\Bansi\Desktop\test\dashboard
+npm install -g vercel
+vercel login
+vercel --prod
+```
+
+Answer prompts as follows for first deploy:
+
+1. Set up and deploy: `Y`
+2. Which scope: your personal account/team
+3. Link to existing project: `N` (if first deploy)
+4. Project name: choose a name, for example `ngfw-dashboard`
+5. Directory: `.` (current directory)
+6. Override settings: `N`
+
+Expected output ends with a production URL like `https://<project-name>.vercel.app`.
+
+#### 14.7.5 Verify deployment is live
+
+`[windows]`:
+
+```bash
+curl -I https://<project-name>.vercel.app
+```
+
+Expected:
+
+1. HTTP status `200`.
+2. Opening the URL in browser renders your dashboard.
+
+#### 14.7.6 Update flow after first deployment
+
+If using Method A (Git integration):
+
+1. Edit `dashboard/index.html` in repo.
+2. Commit and push:
+
+`[windows]`:
+
+```bash
+cd C:\Users\Bansi\Desktop\test
+git add dashboard/index.html
+git commit -m "Update dashboard"
+git push
+```
+
+1. Vercel redeploys automatically.
+
+If using Method B (CLI only):
+
+`[windows]`:
+
+```bash
+cd C:\Users\Bansi\Desktop\test\dashboard
+vercel --prod
+```
+
+#### 14.7.7 Common first-time mistakes and fixes
+
+1. Wrong root directory: if Vercel cannot find your dashboard, set Root Directory to `dashboard`.
+2. Build command errors for static page: clear Build Command and Install Command.
+3. Blank page after deploy: ensure `dashboard/index.html` exists and is committed.
+4. API calls failing from Vercel page: re-check CORS list in `~/lab/control-api/api.env` includes your Vercel origin.
+
+### 14.8 Configure Live Dashboard to Use Tailnet API URL
+
+1. Open your deployed Vercel URL.
+2. Disable Mock mode.
+3. Set API Base URL to `https://<device>.<tailnet>.ts.net`.
+4. Paste API token from `~/lab/secrets/api_token.env`.
+5. Test: health, launch, stop-all, and Kali IP reassign.
+
+Important:
+
+1. A private Tailnet URL only works for users/devices that are logged into your tailnet.
+2. If someone is not on your tailnet, browser requests to that API URL will fail.
+
+### 14.9 Public Demo Mode (Optional): Tailscale Funnel
+
+Use this only for short, supervised demos where non-tailnet viewers must reach the API.
+
+`[debian]` in a dedicated terminal:
+
+```bash
+sudo tailscale funnel 5000
+```
+
+Expected output includes:
+
+1. `Available on the internet:`
+2. A public HTTPS URL on your `*.ts.net` domain.
+
+Critical notes:
+
+1. Port mode is exclusive: if the latest command is `funnel`, that port is public.
+2. Switch back to private mode by re-running `sudo tailscale serve 5000`.
+3. Keep API token mandatory for all state-changing operations.
+
+### 14.10 Optional Alternative: Cloudflare Tunnel Instead of Funnel
+
+If you prefer Cloudflare over Funnel for public demo ingress, route only the API origin and keep token auth enabled.
+
+Use exactly the same CORS and dashboard configuration pattern, just replace API Base URL with your Cloudflare public HTTPS endpoint.
+
+### 14.11 Security Checklist Before Any Public Exposure
+
+1. Keep API token required on every mutating endpoint.
+2. Never store OPNsense API credentials in dashboard code or Vercel frontend variables.
+3. Keep `opnsense_api.env` and `api_token.env` only on Debian host with `chmod 600`.
+4. Time-box public exposure windows and revert to private Tailnet Serve mode after demo.
+5. Do not expose raw log storage paths directly over HTTP.
+6. Rotate API token after external demos.
 
 ---
 
