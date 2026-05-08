@@ -1,0 +1,381 @@
+% ============================================================
+%  BRB-NGFW Literature Survey — BibTeX References
+%  All entries verified via Google Scholar (Feb 2026)
+% ============================================================
+
+% --- NGFW Architecture & Evolution ---
+
+@inproceedings{neupane2018ngfw,
+  author    = {K. Neupane and R. Haddad and L. Chen},
+  title     = {Next Generation Firewall for Network Security: A Survey},
+  booktitle = {Proc. IEEE SoutheastCon},
+  year      = {2018},
+  pages     = {1--6},
+  publisher = {IEEE},
+  doi       = {10.1109/SECON.2018.8478973}
+}
+
+@inproceedings{liang2022evolution,
+  author    = {J. Liang and Y. Kim},
+  title     = {Evolution of Firewalls: Toward Securer Network Using Next Generation Firewall},
+  booktitle = {Proc. IEEE 12th Annual Computing and Communication Workshop and Conference (CCWC)},
+  year      = {2022},
+  pages     = {752--759},
+  publisher = {IEEE},
+  doi       = {10.1109/CCWC54503.2022.9720435}
+}
+
+@article{heino2022endpoint,
+  author    = {J. Heino and A. Hakkala and S. Virtanen},
+  title     = {Study of Methods for Endpoint Aware Inspection in a Next Generation Firewall},
+  journal   = {Cybersecurity},
+  volume    = {5},
+  number    = {1},
+  pages     = {1--19},
+  year      = {2022},
+  publisher = {Springer},
+  doi       = {10.1186/s42400-022-00127-8}
+}
+
+@article{islam2023analysis,
+  author    = {M. S. Islam and M. A. Uddin and D. M. D. Hossain},
+  title     = {Analysis and Evaluation of Network and Application Security Based on Next Generation Firewall},
+  journal   = {International Journal of Computing and Network Technology},
+  year      = {2023},
+  publisher = {IJNC}
+}
+
+@article{lamdakkar2024modern,
+  author    = {O. Lamdakkar and I. Ameur and M. M. Eleyatt and F. Carlier},
+  title     = {Toward a Modern Secure Network Based on Next-Generation Firewalls: Recommendations and Best Practices},
+  journal   = {Procedia Computer Science},
+  year      = {2024},
+  publisher = {Elsevier},
+  doi       = {10.1016/j.procs.2024.09.242}
+}
+
+@article{mukkamala2020survey,
+  author    = {P. P. Mukkamala and S. Rajendran},
+  title     = {A Survey on the Different Firewall Technologies},
+  journal   = {International Journal of Engineering Applied Sciences and Technology},
+  volume    = {5},
+  number    = {1},
+  year      = {2020}
+}
+
+@article{mohile2023ngfw,
+  author    = {A. Mohile},
+  title     = {Next-Generation Firewalls: A Performance-Driven Approach to Contextual Threat Prevention},
+  journal   = {International Journal of Computer Technology and Electronics Communication},
+  year      = {2023}
+}
+
+@incollection{singh2024comparative,
+  author    = {L. Singh and R. Singh},
+  title     = {Comparative Analysis of Traditional Firewalls and Next-Generation Firewalls: A Review},
+  booktitle = {Latest Trends in Engineering and Technology},
+  publisher = {Taylor \& Francis},
+  year      = {2024},
+  doi       = {10.1201/9781032665443-3}
+}
+
+@article{george2021brief,
+  author    = {A. S. George and A. S. H. George},
+  title     = {A Brief Study on the Evolution of Next Generation Firewall and Web Application Firewall},
+  journal   = {International Journal of Advanced Research in Computer and Communication Engineering},
+  volume    = {10},
+  number    = {5},
+  year      = {2021}
+}
+
+% --- Open-Source Firewalls ---
+
+@inproceedings{kiratsata2022behaviour,
+  author    = {H. J. Kiratsata and D. P. Raval and P. K. Viras},
+  title     = {Behaviour Analysis of Open-Source Firewalls Under Security Crisis},
+  booktitle = {Proc. IEEE International Conference on Distributed Computing and Electrical Circuits and Electronics (ICDCECE)},
+  year      = {2022},
+  publisher = {IEEE},
+  doi       = {10.1109/ICDCECE53908.2022.9767176}
+}
+
+@article{che2023opnsense,
+  author    = {C. K. N. S. A. Che and K. M. Rafee},
+  title     = {Towards Secure Local Area Network ({LAN}) Using {OPNsense} Firewall},
+  journal   = {Malaysian Journal of Computing and Applied Mathematics},
+  year      = {2023},
+  publisher = {UNISZA}
+}
+
+@inproceedings{olivera2024opensource,
+  author    = {G. Olivera-Ruiz and J. Solsol-Isminio},
+  title     = {Next-Generation Firewall Open-Source and {LAN} Performance},
+  booktitle = {Proc. IEEE LACCCEI International Multi-Conference for Engineering, Education and Technology},
+  year      = {2024},
+  publisher = {IEEE},
+  doi       = {10.1109/LACCCEI62174.2024.10767614}
+}
+
+% --- ML for Intrusion Detection ---
+
+@article{liu2019mlids,
+  author    = {H. Liu and B. Lang},
+  title     = {Machine Learning and Deep Learning Methods for Intrusion Detection Systems: A Survey},
+  journal   = {Applied Sciences},
+  volume    = {9},
+  number    = {20},
+  pages     = {4396},
+  year      = {2019},
+  publisher = {MDPI},
+  doi       = {10.3390/app9204396}
+}
+
+@article{ahmad2021nids,
+  author    = {Z. Ahmad and A. Shahid Khan and C. Wai Shiang and J. Abdullah and F. Ahmad},
+  title     = {Network Intrusion Detection System: A Systematic Study of Machine Learning and Deep Learning Approaches},
+  journal   = {Transactions on Emerging Telecommunications Technologies},
+  volume    = {32},
+  number    = {1},
+  pages     = {e4150},
+  year      = {2021},
+  publisher = {Wiley},
+  doi       = {10.1002/ett.4150}
+}
+
+@article{dacosta2019iot,
+  author    = {K. A. P. Da Costa and J. P. Papa and C. O. Lisboa and R. Munoz and V. H. C. de Albuquerque},
+  title     = {Internet of Things: A Survey on Machine Learning-Based Intrusion Detection Approaches},
+  journal   = {Computer Networks},
+  volume    = {151},
+  pages     = {147--157},
+  year      = {2019},
+  publisher = {Elsevier},
+  doi       = {10.1016/j.comnet.2019.01.023}
+}
+
+@article{sultana2019sdn,
+  author    = {N. Sultana and N. Chilamkurti and W. Peng and R. Alhadad},
+  title     = {Survey on {SDN} Based Network Intrusion Detection System Using Machine Learning Approaches},
+  journal   = {Peer-to-Peer Networking and Applications},
+  volume    = {12},
+  number    = {2},
+  pages     = {493--501},
+  year      = {2019},
+  publisher = {Springer},
+  doi       = {10.1007/s12083-017-0630-0}
+}
+
+@article{he2023adversarial,
+  author    = {K. He and D. D. Kim and M. R. Asghar},
+  title     = {Adversarial Machine Learning for Network Intrusion Detection Systems: A Comprehensive Survey},
+  journal   = {IEEE Communications Surveys \& Tutorials},
+  volume    = {25},
+  number    = {1},
+  pages     = {538--566},
+  year      = {2023},
+  publisher = {IEEE},
+  doi       = {10.1109/COMST.2022.3233132}
+}
+
+@article{dini2023overview,
+  author    = {P. Dini and A. Elhanashi and A. Begni and S. Saponara and Q. Zheng and D. Gasri},
+  title     = {Overview on Intrusion Detection Systems Design Exploiting Machine Learning for Networking Cybersecurity},
+  journal   = {Applied Sciences},
+  volume    = {13},
+  number    = {13},
+  pages     = {7507},
+  year      = {2023},
+  publisher = {MDPI},
+  doi       = {10.3390/app13137507}
+}
+
+% --- Deep Packet Inspection ---
+
+@article{song2020dpi,
+  author    = {W. Song and M. Beshley and K. Przystupa and H. Beshley and O. Kochan and A. Pryslupskyi and D. Pieniak and J. Su},
+  title     = {A Software Deep Packet Inspection System for Network Traffic Analysis and Anomaly Detection},
+  journal   = {Sensors},
+  volume    = {20},
+  number    = {6},
+  pages     = {1637},
+  year      = {2020},
+  publisher = {MDPI},
+  doi       = {10.3390/s20061637}
+}
+
+% --- Isolation Forest & Anomaly Detection ---
+
+@inproceedings{liu2008isolation,
+  author    = {F. T. Liu and K. M. Ting and Z.-H. Zhou},
+  title     = {Isolation Forest},
+  booktitle = {Proc. IEEE International Conference on Data Mining (ICDM)},
+  year      = {2008},
+  pages     = {413--422},
+  publisher = {IEEE},
+  doi       = {10.1109/ICDM.2008.17}
+}
+
+@article{tao2018parallel,
+  author    = {X. Tao and Y. Peng and F. Zhao and P. Zhao and Y. Wang},
+  title     = {A Parallel Algorithm for Network Traffic Anomaly Detection Based on Isolation Forest},
+  journal   = {International Journal of Distributed Sensor Networks},
+  volume    = {14},
+  number    = {11},
+  year      = {2018},
+  publisher = {SAGE},
+  doi       = {10.1177/1550147718814471}
+}
+
+@inproceedings{alfarizi2021isolation,
+  author    = {W. S. Al Farizi and I. Hidayah and M. N. Rizal},
+  title     = {Isolation Forest Based Anomaly Detection: A Systematic Literature Review},
+  booktitle = {Proc. 8th International Conference on Information Technology, Computer and Electrical Engineering (ICITACEE)},
+  year      = {2021},
+  publisher = {IEEE},
+  doi       = {10.1109/ICITACEE53184.2021.9617498}
+}
+
+@inproceedings{cheng2019outlier,
+  author    = {Z. Cheng and C. Zou and J. Dong},
+  title     = {Outlier Detection Using Isolation Forest and Local Outlier Factor},
+  booktitle = {Proc. Conference on Research in Adaptive and Convergent Systems (CARMA)},
+  year      = {2019},
+  pages     = {161--168},
+  publisher = {ACM},
+  doi       = {10.1145/3338840.3355641}
+}
+
+% --- Anomaly-Based Web/Network Detection ---
+
+@article{vartouni2019leveraging,
+  author    = {A. Moradi Vartouni and S. Shokrzade Kaki and M. Teshnehlab},
+  title     = {Leveraging Deep Neural Networks for Anomaly-Based Web Application Firewall},
+  journal   = {IET Information Security},
+  volume    = {13},
+  number    = {4},
+  pages     = {352--361},
+  year      = {2019},
+  publisher = {IET},
+  doi       = {10.1049/iet-ifs.2018.5404}
+}
+
+@article{zhang2022comparative,
+  author    = {C. Zhang and D. Jia and L. Wang and W. Wang and F. Liu and A. Yang},
+  title     = {Comparative Research on Network Intrusion Detection Methods Based on Machine Learning},
+  journal   = {Computers \& Security},
+  volume    = {121},
+  pages     = {102861},
+  year      = {2022},
+  publisher = {Elsevier},
+  doi       = {10.1016/j.cose.2022.102861}
+}
+
+% --- DDoS Detection ---
+
+@article{psychogyios2024ddos,
+  author    = {K. Psychogyios and A. Boubendir and others},
+  title     = {A Survey of {DDoS} Attack and Defence: Architectures, Taxonomy and Mitigation},
+  journal   = {Future Internet},
+  volume    = {16},
+  number    = {3},
+  pages     = {73},
+  year      = {2024},
+  publisher = {MDPI},
+  doi       = {10.3390/fi16030073}
+}
+
+% --- Seminal / Background ---
+
+@article{chandola2009anomaly,
+  author    = {V. Chandola and A. Banerjee and V. Kumar},
+  title     = {Anomaly Detection: A Survey},
+  journal   = {ACM Computing Surveys},
+  volume    = {41},
+  number    = {3},
+  pages     = {1--58},
+  year      = {2009},
+  publisher = {ACM},
+  doi       = {10.1145/1541880.1541882}
+}
+
+% --- Historical / Foundational ---
+
+@techreport{ingham2002history,
+  author      = {K. Ingham and S. Forrest},
+  title       = {A History and Survey of Network Firewalls},
+  institution = {University of New Mexico},
+  year        = {2002},
+  number      = {TR-2002-12}
+}
+
+@book{cheswick1994firewalls,
+  author    = {W. R. Cheswick and S. M. Bellovin},
+  title     = {Firewalls and Internet Security: Repelling the Wily Hacker},
+  publisher = {Addison-Wesley},
+  year      = {1994}
+}
+
+@techreport{scarfone2009nist,
+  author      = {K. Scarfone and P. Hoffman},
+  title       = {Guidelines on Firewalls and Firewall Policy},
+  institution = {National Institute of Standards and Technology},
+  year        = {2009},
+  number      = {SP 800-41 Rev.\ 1},
+  doi         = {10.6028/NIST.SP.800-41r1}
+}
+
+@article{denning1987ids,
+  author    = {D. E. Denning},
+  title     = {An Intrusion-Detection Model},
+  journal   = {IEEE Transactions on Software Engineering},
+  volume    = {SE-13},
+  number    = {2},
+  pages     = {222--232},
+  year      = {1987},
+  publisher = {IEEE},
+  doi       = {10.1109/TSE.1987.232894}
+}
+
+@inproceedings{roesch1999snort,
+  author    = {M. Roesch},
+  title     = {Snort -- Lightweight Intrusion Detection for Networks},
+  booktitle = {Proc.\ USENIX LISA Conference},
+  year      = {1999},
+  publisher = {USENIX}
+}
+
+@article{paxson1999bro,
+  author    = {V. Paxson},
+  title     = {Bro: A System for Detecting Network Intruders in Real-Time},
+  journal   = {Computer Networks},
+  volume    = {31},
+  number    = {23--24},
+  pages     = {2435--2463},
+  year      = {1999},
+  publisher = {Elsevier},
+  doi       = {10.1016/S1389-1286(99)00112-7}
+}
+
+@article{khraisat2019ids,
+  author    = {A. Khraisat and I. Gondal and P. Vamplew and J. Kamruzzaman},
+  title     = {Survey of Intrusion Detection Systems: Techniques, Datasets and Challenges},
+  journal   = {Cybersecurity},
+  volume    = {2},
+  number    = {1},
+  pages     = {1--22},
+  year      = {2019},
+  publisher = {Springer},
+  doi       = {10.1186/s42400-019-0038-7}
+}
+
+@article{liao2013ids,
+  author    = {H.-J. Liao and C.-H. R. Lin and Y.-C. Lin and K.-Y. Tung},
+  title     = {Intrusion Detection System: A Comprehensive Review},
+  journal   = {Journal of Network and Computer Applications},
+  volume    = {36},
+  number    = {1},
+  pages     = {16--24},
+  year      = {2013},
+  publisher = {Elsevier},
+  doi       = {10.1016/j.jnca.2012.09.004}
+}
